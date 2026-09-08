@@ -74,20 +74,22 @@ def parse_interval_log(
     start_pattern: re.Pattern[str],
     end_pattern: re.Pattern[str],
 ) -> list[TimeRange]:
-    """Pair start/end diagnostics while tolerating an interval open at EOF."""
+    """Pair start/end diagnostics, including when both appear on one log line."""
     start: float | None = None
     result: list[TimeRange] = []
     for line in stderr.splitlines():
         found_start = start_pattern.search(line)
+        found_end = end_pattern.search(line)
+
         if found_start:
             start = float(found_start.group(1))
-            continue
-        found_end = end_pattern.search(line)
+
         if found_end and start is not None:
             end = float(found_end.group(1))
             if end >= start:
                 result.append(TimeRange(start, end))
             start = None
+
     return result
 
 
