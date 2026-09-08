@@ -1,29 +1,25 @@
-"""Domain models used by Kubrick's analysis and editing pipeline."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 
-class Decision(StrEnum):
+class DecisionKind(StrEnum):
     KEEP = "keep"
+    COMPRESS = "compress"
     CUT = "cut"
     REVIEW = "review"
 
 
 @dataclass(frozen=True, slots=True)
 class TimeRange:
-    """Half-open media interval in seconds."""
-
     start: float
     end: float
 
     def __post_init__(self) -> None:
-        if self.start < 0:
-            raise ValueError("start must be >= 0")
-        if self.end < self.start:
-            raise ValueError("end must be >= start")
+        if self.start < 0 or self.end < 0 or self.end < self.start:
+            raise ValueError("TimeRange requires 0 <= start <= end")
 
     @property
     def duration(self) -> float:
@@ -31,25 +27,44 @@ class TimeRange:
 
 
 @dataclass(frozen=True, slots=True)
-class SilenceInterval(TimeRange):
-    """Detected low-energy audio interval."""
+class EditDecision:
+    source: TimeRange
+    kind: DecisionKind
+    confidence: float
+    reason: str
+    target_duration: float | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    peak_db: float | None = None
+    def __post_init__(self) -> None:
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("confidence must be between 0 and 1")
+        if self.kind is DecisionKind.COMPRESS:
+            if self.target_duration is None or self.target_duration < 0:
+                raise ValueError("compress decisions require target_duration >= 0")
+            if self.target_duration > self.source.duration:
+                raise ValueError("target_duration cannot exceed source duration")
 
 
 @dataclass(frozen=True, slots=True)
-class EditDecision:
-    """A reversible recommendation to keep, cut, or review an interval."""
-
+class KeepSegment:
     source: TimeRange
-    decision: Decision
-    replacement_duration: float | None = None
-    confidence: float = 1.0
-    reason: str = ""
-    tags: tuple[str, ...] = field(default_factory=tuple)
 
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be between 0 and 1")
-        if self.replacement_duration is not None and self.replacement_duration < 0:
-            raise ValueError("replacement_duration must be >= 0")
+
+@dataclass(slots=True)
+class AnalysisReport:
+    duration: float
+    silences: list[TimeRange]
+    decisions: list[EditDecision]
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def removed_duration(self) -> float:
+        return sum(
+            d.source.duration - (d.target_duration or 0)
+            for d in self.decisions
+            if d.kind is not DecisionKind.KEEP
+        )
+
+    @property
+    def output_duration(self) -> float:
+        return max(0.0, self.duration - self.removed_duration)
