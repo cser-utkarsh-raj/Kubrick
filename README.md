@@ -2,253 +2,222 @@
 
 > **Cut the noise. Reveal the story.**
 
-**Kubrick** is a precision-first local video editing engine for real footage. It combines deterministic media analysis with a small, editable project model and FFmpeg compositor so common editing jobs can be automated without hiding the edit from the user.
-
-Lectures. Tutorials. Presentations. Interviews. Courses. Explainers. Creator recordings.
+**Kubrick** is a lightweight, local-first video editor and automatic editing engine for real footage. It is designed for tutorials, lectures, explainers, presentations, interviews and creator recordings — without trying to become a giant Premiere clone.
 
 [![CI](https://github.com/cser-utkarsh-raj/Kubrick/actions/workflows/ci.yml/badge.svg)](https://github.com/cser-utkarsh-raj/Kubrick/actions/workflows/ci.yml)
 
----
+## What it actually does
 
-## What Kubrick is becoming
+- **Import video** and preview it locally.
+- **Auto Edit** spoken footage using explainable silence/audio/visual evidence.
+- **Cut, trim and merge** clips non-destructively.
+- Change **speed and volume** per clip.
+- Apply **FFmpeg video filters**.
+- Add **external audio** with volume and fades.
+- Add timed **text, image and shape layers**.
+- Save the edit as a portable `.kubrick.json` project.
+- Reopen the project and continue editing.
+- Render the project to synchronized MP4 locally.
 
-Kubrick is deliberately **not** trying to become a giant Premiere clone.
-
-The target is a focused editor that does the boring work extremely well:
-
-- cut and trim clips
-- merge clips into a clean timeline
-- remove dead air automatically
-- preserve A/V sync while editing
-- apply reusable visual presets and FFmpeg filters
-- mix extra audio with volume and fades
-- place timed text, images and shapes over footage
-- save the whole edit as a portable JSON project
-- render the project locally with FFmpeg
-- inspect automatic decisions before committing them
-
-The design principle is simple:
-
-> **Be aggressive with objective friction. Be conservative with human meaning.**
-
----
-
-## Automatic editing pipeline
+The important architecture is:
 
 ```text
-SOURCE FOOTAGE
-      │
-      ├── Audio ───── silence / pauses
-      ├── Speech ──── fillers / false starts / repetition   (optional)
-      └── Visual ──── scenes / blackouts / freezes
-                    │
-                    ▼
-             EDITORIAL POLICY
-                    │
-          KEEP / COMPRESS / CUT / REVIEW
-                    │
-                    ▼
-            EDITABLE PROJECT
-          clips + filters + layers
-                    │
-                    ▼
-             FFmpeg COMPOSITOR
-                    │
-                    ▼
-             SYNCHRONIZED MP4
+video → analysis → editorial decisions → editable project → human adjustment → FFmpeg render
 ```
 
-The important distinction is that **analysis and rendering are separate**. Kubrick can propose an automatic edit, save it as a project, let a UI modify it, and only then render the result.
+Automatic editing and manual editing therefore operate on the same timeline model.
 
-## Core editing engine
+## Desktop editor
 
-### Timeline operations
-
-The Python API now exposes non-destructive operations for:
-
-```python
-from kubrick.core import MediaClip, Project
-from kubrick.editor import add_filter, cut_range, merge_clips, trim_clip
-
-clip = MediaClip("camera.mp4", source_start=0, source_end=30)
-trimmed = trim_clip(clip, 3, 24)
-project = merge_clips(trimmed, MediaClip("broll.mp4", 0, 8))
-project = add_filter(project, "eq=contrast=1.04:saturation=1.03")
-project = cut_range(project, 12, 14)
-```
-
-Source files are never modified by these operations.
-
-### Project model
-
-A `.kubrick.json` project can contain:
-
-- sequential main video clips
-- external audio clips
-- video filter chains
-- timed text overlays
-- timed image overlays
-- timed shape overlays
-- output dimensions/FPS metadata
-- a named editing preset
-
-Projects are plain JSON, making them easy to inspect, version, generate or integrate into other tooling.
-
-### Presets
-
-Built-in presets currently include:
-
-| Preset | Purpose |
-|---|---|
-| **clean** | Natural automatic cleanup for spoken footage |
-| **gentle** | Minimal intervention and longer pauses |
-| **tight** | Faster pacing and stronger dead-air removal |
-| **punchy** | Clean preset plus a restrained visual contrast/saturation lift |
-| **mono-voice** | Speech-forward output with mild gain |
-
-Presets are intentionally small and composable rather than opaque AI “styles”.
-
-### Rendering
-
-The compositor uses one FFmpeg filter graph for the final A/V output. It supports:
-
-- arbitrary clip trims
-- clip concatenation
-- playback speed changes
-- per-clip volume
-- FFmpeg video filters
-- external audio layers
-- audio fades and timeline offsets
-- text overlays
-- image overlays
-- color/shape overlays
-- H.264 + AAC MP4 output
-- fast-start MP4s
-
-The existing automatic renderer continues to use the same synchronized keep-timeline principle, so automatic silence removal cannot independently desynchronize audio and video.
-
-## Automatic intelligence
-
-Kubrick's automatic editor is deterministic-first.
-
-### Audio
-
-- FFmpeg `silencedetect`
-- configurable noise threshold
-- EOF-open silence handling
-- `gentle`, `natural`, and `tight` editorial profiles
-- natural pause compression instead of blunt silence deletion
-- overlap-safe timeline construction
-
-### Speech — optional
-
-With the speech extra installed, local `faster-whisper` inference can provide:
-
-- word-level timestamps
-- speech segments
-- filler evidence
-- false-start evidence
-- repetition evidence
-- extended-pause evidence
-- confidence-aware editorial candidates
-
-Speech findings are evidence, not automatic permission to delete.
-
-### Visual — Phase 3 foundation
-
-FFmpeg-backed visual analysis currently provides:
-
-- scene-change detection
-- blackout detection
-- freeze detection
-- visual continuity evidence
-- confidence-scored review decisions
-- technical take scoring based on measurable visual faults
-
-A scene change, blackout or freeze is deliberately not converted into a blind destructive cut.
-
-Semantic slide understanding and semantic multi-take selection remain future work.
-
-## Desktop application
-
-Kubrick is a **native desktop application**, not a browser video editor. The current PySide6 interface exposes the automatic analysis workflow and synchronized rendering.
+The intended everyday experience is the **PySide6 desktop application**, not the Vercel website.
 
 ```bash
 python -m pip install -e ".[gui]"
 kubrick-gui
 ```
 
-FFmpeg and FFprobe must be available on your system `PATH`.
+The current desktop workspace includes:
 
-The desktop UI is the next major expansion area: synchronized video preview, waveform/transcript timeline, edit markers, non-destructive approve/reject controls, and direct access to the project compositor.
+- video preview with play/scrub controls
+- project import/open/save
+- automatic preset editing
+- editable video timeline rows
+- cut-range controls
+- clip inspection
+- video filters
+- text/image/shape layer creation
+- project rendering
+- background analysis/render work so the UI stays responsive
 
-## CLI
+### Windows executable
 
-### Analyze footage
+Kubrick can be packaged with Qt for Python's `pyside6-deploy`:
 
-```bash
-python -m pip install -e .
-kubrick analyze input.mp4 --profile natural --json analysis.json
+```powershell
+python -m pip install -e ".[gui]"
+pyside6-deploy kubrick/ui/app.py --mode onefile --name Kubrick
 ```
 
-### Automatically tighten and render
+The public release target is a normal **`Kubrick.exe` you double-click**, not a Python/CMD-only application. FFmpeg/FFprobe still need to be bundled or installed by the release package; that packaging/signing step is not yet considered release-complete.
 
-```bash
-kubrick render input.mp4 output.mp4 --profile natural
-```
+See [`BUILD.md`](BUILD.md) for the packaging plan.
 
-### Create an editable automatic project
+## Is it lightweight?
 
-```bash
-kubrick new-project input.mp4 edit.kubrick.json --preset clean
-```
+**The application is lightweight compared with a full professional NLE. Video rendering is not.** FFmpeg encoding can use substantial CPU and temporary disk space.
 
-### Render an editable project
+### Practical minimum
 
-```bash
-kubrick render-project edit.kubrick.json output.mp4
-```
+| Resource | Baseline |
+|---|---|
+| OS | Windows 10/11, modern Linux or macOS |
+| CPU | 64-bit 2-core |
+| RAM | 4 GB |
+| Storage | ~1 GB app/dependencies + media working space |
+| GPU | Not required |
+| Media engine | FFmpeg + FFprobe |
 
-Optional local speech intelligence:
+### Recommended
+
+- 4+ modern CPU cores
+- 8–16 GB RAM
+- SSD
+- 1080p H.264/H.265 as a comfortable baseline
+- additional RAM/CPU for local speech transcription
+
+These are engineering targets, not certified vendor requirements. Large 4K projects need more headroom.
+
+## Automatic editing
+
+Kubrick is deterministic-first.
+
+### Audio
+
+- FFmpeg `silencedetect`
+- configurable noise threshold
+- `gentle`, `natural` and `tight` profiles
+- natural pause compression
+- synchronized A/V timeline construction
+
+### Optional speech intelligence
+
+With the speech extra:
 
 ```bash
 python -m pip install -e ".[speech]"
 ```
 
+Kubrick can use local faster-whisper evidence for word timing, fillers, false starts, repetitions and extended pauses. Findings remain conservative editorial evidence rather than unconditional deletion commands.
+
+### Visual intelligence
+
+The visual foundation currently provides:
+
+- scene-change detection
+- blackout detection
+- freeze detection
+- visual continuity evidence
+- technical take scoring
+- confidence-aware review candidates
+
+Semantic slide understanding and semantic multi-take selection remain future work.
+
+## Presets
+
+| Preset | Intent |
+|---|---|
+| **clean** | Natural automatic cleanup |
+| **gentle** | Preserve more pauses and rhythm |
+| **tight** | Faster pacing / stronger dead-air reduction |
+| **punchy** | Cleanup + restrained visual enhancement |
+| **mono-voice** | Speech-forward treatment |
+
+Presets are intentionally small and composable rather than opaque AI styles.
+
+## Project model
+
+`.kubrick.json` can represent:
+
+- sequential main video clips
+- external audio clips
+- clip speed/volume
+- FFmpeg filter chains
+- timed text
+- timed images
+- timed shapes
+- output metadata
+- preset information
+
+Example Python API:
+
+```python
+from kubrick.core import MediaClip
+from kubrick.editor import add_filter, cut_range, merge_clips, trim_clip
+
+clip = MediaClip("camera.mp4", 0, 30)
+trimmed = trim_clip(clip, 3, 24)
+project = merge_clips(trimmed, MediaClip("broll.mp4", 0, 8))
+project = add_filter(project, "eq=contrast=1.04:saturation=1.03")
+project = cut_range(project, 12, 14)
+```
+
+Source media is not modified by these operations.
+
+## CLI
+
+Analyze:
+
+```bash
+kubrick analyze input.mp4 --profile natural --json analysis.json
+```
+
+Automatic render:
+
+```bash
+kubrick render input.mp4 output.mp4 --profile natural
+```
+
+Create editable automatic project:
+
+```bash
+kubrick new-project input.mp4 edit.kubrick.json --preset clean
+```
+
+Render editable project:
+
+```bash
+kubrick render-project edit.kubrick.json output.mp4
+```
+
+The CLI is useful for automation and batch workflows. The GUI is the intended normal user experience.
+
 ## Architecture
 
 ```text
 Kubrick/
-├── kubrick/
-│   ├── core/       models, policy, project model, presets, timeline
-│   ├── media/      FFmpeg probing, silence + visual analysis, compositor
-│   ├── speech/     optional local transcription + editorial evidence
-│   ├── editor/     analysis, automatic projects, operations, rendering
-│   └── ui/         native PySide6 application + branding
-├── index.py        lightweight Vercel homepage/API handler
-├── index.html      public product/status page
-├── tests/          behavioral + regression coverage
-└── .github/        CI across supported Python versions
+├── kubrick/core/       project model, policy, presets, timeline
+├── kubrick/media/      FFmpeg, silence/visual analysis, compositor
+├── kubrick/speech/     optional local transcription/evidence
+├── kubrick/editor/     analysis, automatic projects, operations
+├── kubrick/ui/         native desktop editor
+├── index.py            tiny Vercel homepage/API handler
+├── index.html          public product/status site
+└── tests/              regression + behavior tests
 ```
 
-### Local-first boundary
-
-The heavy media path stays local. Vercel is only a lightweight HTTP surface for the public product page and health endpoint; it is **not** the video-processing runtime.
+Vercel is **not** the video-processing runtime. Heavy media work stays local.
 
 ## Quality bar
 
-Kubrick is not successful because it found the most things to delete.
+Kubrick is not successful because it deletes the most footage.
 
-A release must satisfy:
-
-1. **A/V never drifts because of an edit.**
-2. **Every destructive automatic decision has evidence.**
-3. **Natural speech rhythm survives automatic editing.**
-4. **Low-confidence findings remain reviewable.**
-5. **Visual anomalies do not become blind automatic cuts.**
-6. **The same input/settings produce deterministic analysis.**
-7. **Projects remain editable instead of becoming one opaque render command.**
-8. **The core workflow remains useful without a cloud dependency.**
+1. A/V must stay synchronized.
+2. Automatic destructive decisions need measurable evidence.
+3. Natural speech rhythm should survive.
+4. Ambiguous findings should remain reviewable.
+5. Projects should remain editable after analysis.
+6. The same settings/input should produce deterministic results.
+7. Core editing should work without a cloud dependency.
 
 ## Development
 
@@ -259,73 +228,57 @@ python -m compileall -q kubrick
 ruff check .
 ```
 
-CI runs tests, compilation and linting across Python 3.11–3.13.
+CI covers Python 3.11–3.13.
 
 ## Roadmap
 
-### Phase 1 — Precision foundation — **complete**
+### Engine — strong foundation
 
 - [x] media probing
 - [x] silence analysis
-- [x] editing profiles
-- [x] natural pause compression
-- [x] synchronized A/V rendering
-- [x] metadata preservation
-- [x] JSON reports
-- [x] native desktop UI
-- [x] application branding
-
-### Phase 2 — Speech intelligence — **foundation complete**
-
-- [x] local faster-whisper integration
-- [x] word-level timing
-- [x] conservative VAD
-- [x] filler / false-start / repetition evidence
-- [x] confidence-aware editorial candidates
-- [ ] word-aware boundary refinement
-- [ ] semantic retake selection
-
-### Phase 3 — Visual intelligence — **foundation complete**
-
-- [x] scene-change detection
-- [x] blackout detection
-- [x] freeze detection
-- [x] visual continuity evidence
-- [x] technical take scoring
-- [ ] slide-content understanding
-- [ ] semantic multi-take selection
-
-### Phase 4 — Editor core — **in progress**
-
+- [x] speech evidence foundation
+- [x] scene/blackout/freeze analysis
+- [x] synchronized rendering
 - [x] editable project model
-- [x] cut / trim / merge operations
-- [x] video filters
-- [x] external audio layers
-- [x] text / image / shape overlays
-- [x] reusable presets
-- [x] project JSON save/load
+- [x] cut / trim / merge
+- [x] filters
+- [x] audio layers
+- [x] text / image / shape layers
+- [x] presets
+- [x] project save/load
 - [x] project compositor
-- [ ] synchronized preview player
-- [ ] waveform timeline
-- [ ] transcript timeline
-- [ ] visual edit markers
-- [ ] approve / reject / modify controls
-- [ ] undo / redo history
 
-### Phase 5 — Release quality
+### Editor — current focus
 
+- [x] native desktop workspace
+- [x] video preview
+- [x] project import/open/save
+- [x] automatic preset editing
+- [x] timeline representation
+- [x] basic cut/filter/layer controls
+- [ ] true draggable multi-track timeline
+- [ ] waveform visualization
+- [ ] transcript/word timeline
+- [ ] approve/reject/modify decision cards
+- [ ] undo/redo history
+- [ ] richer audio tools
+
+### Release
+
+- [ ] bundled FFmpeg/FFprobe
+- [ ] Windows signed `.exe` installer
+- [ ] macOS `.app`
+- [ ] Linux package/AppImage
+- [ ] end-to-end fixture renders in CI
 - [ ] captions
-- [ ] richer audio cleanup
-- [ ] packaged Windows/macOS/Linux releases
-- [ ] GPU acceleration where it materially improves throughput
-- [ ] installer + first-run FFmpeg checks
-- [ ] end-to-end fixture videos in CI
+- [ ] optional GPU acceleration where useful
+- [ ] semantic slide/take understanding
 
 ## Status
 
 **Active development — v0.3.0**
 
-Kubrick has moved beyond a silence-only prototype: it now has an editable project representation and a local FFmpeg compositor for practical multi-layer edits. The next priority is connecting that engine to a genuinely rich, non-destructive desktop timeline.
+Kubrick is now past the “analysis script” stage: it has a real editable project model, a practical compositor, automatic editing presets and a functional desktop editor workspace. The next work is depth and polish — especially a true multi-track timeline and release packaging — rather than another architecture rewrite.
 
 ## License
 
