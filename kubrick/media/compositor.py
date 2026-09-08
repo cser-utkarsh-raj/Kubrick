@@ -9,6 +9,7 @@ from kubrick.media.ffmpeg import _run, has_audio_stream, probe_duration
 
 
 _SAFE_FFMPEG_FILTER = re.compile(r"^[A-Za-z0-9_=.\-+/:,@% ]+$")
+_HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$")
 
 
 def _duration(clip) -> float:
@@ -18,7 +19,19 @@ def _duration(clip) -> float:
 
 
 def _text_escape(value: str) -> str:
-    return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    return (
+        value.replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+        .replace("%", "\\%")
+    )
+
+
+def _shape_color(value: str) -> str:
+    value = value.strip()
+    if _HEX_COLOR.fullmatch(value):
+        return "0x" + value[1:7]
+    return value
 
 
 def render_project(
@@ -35,6 +48,9 @@ def render_project(
         raise ValueError("crf must be 0..51")
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
+    input_paths = {Path(clip.path).resolve() for clip in project.video}
+    if output.resolve() in input_paths:
+        raise ValueError("output_path must be different from the source video")
 
     video = sorted(project.video, key=lambda c: c.timeline_start)
     if any(c.duration is None for c in video):
@@ -42,7 +58,9 @@ def render_project(
     expected = 0.0
     for clip in video:
         if abs(clip.timeline_start - expected) > 1e-4:
-            raise ValueError("main video clips must be sequential; use merge_clips() to normalize them")
+            raise ValueError(
+                "main video clips must be sequential; use merge_clips() to normalize them"
+            )
         expected += _duration(clip)
     total_duration = expected
 
@@ -84,17 +102,26 @@ def render_project(
                 f"asetpts=PTS-STARTPTS,{_atempo_chain(clip.speed)},volume={clip.volume:.4f}[a{index}]"
             )
         else:
-            filters.append(f"anullsrc=r=48000:cl=stereo:d={_duration(clip):.6f}[a{index}]")
+            filters.append(
+                f"anullsrc=r=48000:cl=stereo:d={_duration(clip):.6f}[a{index}]"
+            )
         audio_labels.append(f"[a{index}]")
 
     if len(video_labels) == 1:
         current_video = video_labels[0]
     else:
-        filters.append(f"{''.join(video_labels)}concat=n={len(video_labels)}:v=1:a=0[basev]")
+        filters.append(
+            f"{''.join(video_labels)}concat=n={len(video_labels)}:v=1:a=0[basev]"
+        )
         current_video = "[basev]"
 
-    for overlay_index, overlay in sorted(enumerate(project.overlays), key=lambda item: item[1].start):
-        end = min(overlay.end if overlay.end is not None else total_duration, total_duration)
+    for overlay_index, overlay in sorted(
+        enumerate(project.overlays), key=lambda item: item[1].start
+    ):
+        end = min(
+            overlay.end if overlay.end is not None else total_duration,
+            total_duration,
+        )
         if end <= overlay.start:
             continue
         label = f"ov{overlay_index}"
@@ -109,8 +136,13 @@ def render_project(
             input_index = image_inputs[overlay_index]
             scale = ""
             if overlay.width and overlay.height:
-                scale = f",scale={overlay.width}:{overlay.height}:force_original_aspect_ratio=decrease"
-            filters.append(f"[{input_index}:v]format=rgba{scale},setpts=PTS-STARTPTS[img{overlay_index}]")
+                scale = (
+                    f",scale={overlay.width}:{overlay.height}:"
+                    "force_original_aspect_ratio=decrease"
+                )
+            filters.append(
+                f"[{input_index}:v]format=rgba{scale},setpts=PTS-STARTPTS[img{overlay_index}]"
+            )
             filters.append(
                 f"{current_video}[img{overlay_index}]overlay=x={overlay.x}:y={overlay.y}:"
                 f"enable='between(t,{overlay.start:.6f},{end:.6f})'[{label}]"
@@ -118,9 +150,10 @@ def render_project(
         else:
             width = overlay.width or project.width or 1920
             height = overlay.height or project.height or 1080
+            color = _shape_color(overlay.value)
             filters.append(
-                f"color=c={overlay.value}@{overlay.opacity:.3f}:s={width}x{height}:"
-                f"d={max(0.01, end-overlay.start):.6f},format=rgba[shape{overlay_index}]"
+                f"color=c={color}@{overlay.opacity:.3f}:s={width}x{height}:"
+                f"d={max(0.01, end - overlay.start):.6f},format=rgba[shape{overlay_index}]"
             )
             filters.append(
                 f"{current_video}[shape{overlay_index}]overlay=x={overlay.x}:y={overlay.y}:"
@@ -141,7 +174,10 @@ def render_project(
             chain += f",afade=t=in:st=0:d={min(clip.fade_in, duration):.6f}"
         if clip.fade_out:
             fade_start = max(0.0, duration - clip.fade_out)
-            chain += f",afade=t=out:st={fade_start:.6f}:d={min(clip.fade_out, duration):.6f}"
+            chain += (
+                f",afade=t=out:st={fade_start:.6f}:"
+                f"d={min(clip.fade_out, duration):.6f}"
+            )
         delay = int(round(clip.timeline_start * 1000))
         chain += f",adelay={delay}:all=1,atrim=duration={total_duration:.6f}[exta{offset}]"
         filters.append(chain)
@@ -152,26 +188,45 @@ def render_project(
     else:
         filters.append(
             f"{''.join(audio_inputs)}amix=inputs={len(audio_inputs)}:duration=first:"
-            f"dropout_transition=0:normalize=0[aout]"
+            "dropout_transition=0:normalize=0[aout]"
         )
         current_audio = "[aout]"
 
     filters.append(f"{current_video}format=yuv420p[vout]")
     graph = ";\n".join(filters)
 
-    with tempfile.NamedTemporaryFile("w", suffix=".ffscript", encoding="utf-8", delete=False) as handle:
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".ffscript", encoding="utf-8", delete=False
+    ) as handle:
         handle.write(graph)
         script = Path(handle.name)
     try:
-        _run([
-            *inputs,
-            "-filter_complex_script", str(script),
-            "-map", "[vout]", "-map", current_audio,
-            "-t", f"{total_duration:.6f}",
-            "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
-            "-c:a", "aac", "-b:a", audio_bitrate,
-            "-movflags", "+faststart", str(output),
-        ])
+        _run(
+            [
+                *inputs,
+                "-filter_complex_script",
+                str(script),
+                "-map",
+                "[vout]",
+                "-map",
+                current_audio,
+                "-t",
+                f"{total_duration:.6f}",
+                "-c:v",
+                "libx264",
+                "-preset",
+                preset,
+                "-crf",
+                str(crf),
+                "-c:a",
+                "aac",
+                "-b:a",
+                audio_bitrate,
+                "-movflags",
+                "+faststart",
+                str(output),
+            ]
+        )
     finally:
         script.unlink(missing_ok=True)
 
