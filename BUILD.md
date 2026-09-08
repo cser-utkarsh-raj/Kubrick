@@ -13,7 +13,7 @@ This is the easiest way to develop and test the editor. It requires Python 3.11+
 
 ## Windows executable
 
-Kubrick uses Qt for Python's `pyside6-deploy` path for desktop packaging. Qt documents that `pyside6-deploy` produces a Windows `.exe`, Linux `.bin`, and macOS `.app`. It wraps Nuitka for the application bundle. citeturn0search1
+Kubrick uses Qt for Python's `pyside6-deploy` path for desktop packaging. The deployment tool can produce a Windows `.exe`, Linux `.bin`, or macOS `.app` and uses Nuitka underneath.
 
 Install the deployment tool in the GUI environment, then from the repository root:
 
@@ -22,17 +22,17 @@ python -m pip install -e ".[gui]"
 pyside6-deploy kubrick/ui/app.py --mode onefile --name Kubrick
 ```
 
-For a smaller startup footprint, use standalone mode instead of onefile:
+For a standalone directory build:
 
 ```powershell
 pyside6-deploy kubrick/ui/app.py --mode standalone --name Kubrick
 ```
 
-### Important: FFmpeg is a runtime dependency
+## Important: FFmpeg is a runtime dependency
 
 The application bundle contains the Kubrick/PySide6 side of the program, but **FFmpeg and FFprobe are media-engine dependencies**. For a public Windows release, Kubrick should ship them in a controlled `bin/` directory or use a first-run dependency installer. Do not assume a user's machine already has FFmpeg.
 
-The release packaging task therefore remains:
+The release packaging target is:
 
 ```text
 Kubrick.exe
