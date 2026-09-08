@@ -25,6 +25,10 @@ If `python -m pip install -e ".[gui]"` says that the directory is not a Python p
 
 Development mode requires Python 3.11+ and FFmpeg/FFprobe on `PATH`.
 
+### One-command Windows launcher
+
+From the cloned repository, you can also double-click `run-kubrick.bat`. It changes into the repository automatically, verifies Python and `pyproject.toml`, installs the GUI extra, and starts the editor.
+
 ## Getting the repository
 
 If Kubrick has not been cloned yet:
@@ -35,6 +39,25 @@ cd /d Kubrick
 python -m pip install -e ".[gui]"
 python -m kubrick.ui.app
 ```
+
+## Editor workflow shortcuts
+
+The desktop editor supports a small set of high-value shortcuts without turning into a keyboard-heavy NLE:
+
+| Shortcut | Action |
+|---|---|
+| `Space` | Play / pause |
+| `Left` / `Right` | Nudge 100 ms |
+| `Shift + Left` / `Shift + Right` | Nudge 1 s |
+| `I` | Set cut in-point to playhead |
+| `O` | Set cut out-point to playhead |
+| `Ctrl + Z` | Undo |
+| `Ctrl + Shift + Z` | Redo |
+| Click timeline | Seek |
+| Drag audio/text/image/shape | Move the layer on the shared timeline |
+| `Ctrl + mouse wheel` | Timeline zoom |
+
+The main video track remains sequential; draggable secondary layers are constrained to the project duration.
 
 ## Windows executable
 
@@ -120,7 +143,9 @@ The application is lightweight compared with a full professional NLE. **Renderin
 
 ## Current release reality
 
-The desktop editor is already usable for the core workflow, but packaging is not yet a signed, polished installer. Before calling Kubrick release-ready, add:
+The repository now has a real interactive multi-track timeline, keyboard transport/edit controls, project validation, atomic project saves, relative-media resolution, real FFmpeg fixture coverage and a headless Qt startup gate. The remaining release blockers are **user-environment validation and packaging**, not the basic editing engine.
+
+Before calling the Windows release complete, add and verify:
 
 - bundled FFmpeg/FFprobe
 - first-run dependency check
@@ -128,5 +153,5 @@ The desktop editor is already usable for the core workflow, but packaging is not
 - installer/signing
 - macOS `.app` packaging
 - Linux package/AppImage
-- end-to-end fixture renders
-- crash-safe temporary-file cleanup
+- crash-safe temporary-file cleanup around the full render lifecycle
+- user testing with real Windows media and hardware
