@@ -5,7 +5,15 @@ from pathlib import Path
 import pytest
 
 from kubrick.core import AudioClip, MediaClip, Overlay, Project, PRESETS
-from kubrick.editor import add_filter, cut_range, merge_clips, trim_clip
+from kubrick.editor import (
+    add_audio,
+    add_filter,
+    add_overlay,
+    cut_range,
+    merge_clips,
+    project_duration,
+    trim_clip,
+)
 
 
 def test_project_round_trip(tmp_path: Path) -> None:
@@ -47,11 +55,46 @@ def test_cut_removes_range_and_closes_gap() -> None:
     ]
 
 
+def test_cut_shifts_audio_and_overlays() -> None:
+    project = Project(
+        video=[MediaClip("a.mp4", 0, 10)],
+        audio=[AudioClip("music.wav", 0, 10, 8)],
+        overlays=[Overlay("text", "end", 8, 10)],
+    )
+    cut = cut_range(project, 3, 5)
+    assert cut.audio[0].timeline_start == 6
+    assert (cut.audio[0].source_start, cut.audio[0].source_end) == (0, 2)
+    assert (cut.overlays[0].start, cut.overlays[0].end) == (6, 8)
+
+
+def test_cut_rejects_out_of_range() -> None:
+    project = Project(video=[MediaClip("a.mp4", 0, 10)])
+    with pytest.raises(ValueError, match="exceeds project duration"):
+        cut_range(project, 2, 11)
+
+
 def test_filter_is_non_destructive() -> None:
     project = Project(video=[MediaClip("a.mp4", 0, 3)])
     filtered = add_filter(project, "eq=contrast=1.05")
     assert filtered.video[0].filters == ("eq=contrast=1.05",)
     assert project.video[0].filters == ()
+
+
+def test_layers_can_be_added_non_destructively() -> None:
+    project = Project(video=[MediaClip("a.mp4", 0, 3)])
+    audio = AudioClip("music.wav", 0, 2, 0, 0.5)
+    overlay = Overlay("text", "Hello", 0, 2)
+    with_audio = add_audio(project, audio)
+    with_overlay = add_overlay(with_audio, overlay)
+    assert with_audio.audio == [audio]
+    assert with_overlay.overlays == [overlay]
+    assert project.audio == []
+    assert project.overlays == []
+
+
+def test_project_duration() -> None:
+    project = Project(video=[MediaClip("a.mp4", 0, 4, 0), MediaClip("a.mp4", 5, 8, 4)])
+    assert project_duration(project) == 7
 
 
 def test_presets_are_named_and_useful() -> None:
