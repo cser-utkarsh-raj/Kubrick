@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Kubrick mark">
+  <rect width="128" height="128" rx="24" fill="#0b0b0b"/>
+  <path d="M48 20h32v88H48z" fill="#f2eee7"/>
+  <path d="M48 20h32v9H48z" fill="#d52b1e"/>
+  <path d="M48 108h32l-10-8H58z" fill="#b9b4ad" opacity=".35"/>
+  <path d="M39 108h50" stroke="#d52b1e" stroke-width="3" stroke-linecap="round"/>
+</svg>
