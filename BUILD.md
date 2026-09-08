@@ -2,20 +2,45 @@
 
 Kubrick is developed as a Python/PySide6 desktop application and can also be packaged as a native executable.
 
-## Development mode
+## Windows: run the editor in development mode
 
-```bash
+The install command must be run **inside the cloned Kubrick repository**, where `pyproject.toml` exists.
+
+For example, if the repository is at `C:\Users\u_raj\Kubrick`:
+
+```powershell
+cd /d C:\Users\u_raj\Kubrick
+dir pyproject.toml
 python -m pip install -e ".[gui]"
+python -m kubrick.ui.app
+```
+
+After the editable install, this should also work in a terminal where Python's Scripts directory is on `PATH`:
+
+```powershell
 kubrick-gui
 ```
 
-This is the easiest way to develop and test the editor. It requires Python 3.11+ and FFmpeg/FFprobe on `PATH`.
+If `python -m pip install -e ".[gui]"` says that the directory is not a Python project, check `cd` first. Running it from `C:\Users\u_raj` instead of `C:\Users\u_raj\Kubrick` produces that error because the parent folder has no `pyproject.toml`.
+
+Development mode requires Python 3.11+ and FFmpeg/FFprobe on `PATH`.
+
+## Getting the repository
+
+If Kubrick has not been cloned yet:
+
+```powershell
+git clone https://github.com/cser-utkarsh-raj/Kubrick.git
+cd /d Kubrick
+python -m pip install -e ".[gui]"
+python -m kubrick.ui.app
+```
 
 ## Windows executable
 
 Kubrick uses Qt for Python's `pyside6-deploy` path for desktop packaging. The deployment tool can produce a Windows `.exe`, Linux `.bin`, or macOS `.app` and uses Nuitka underneath.
 
-Install the deployment tool in the GUI environment, then from the repository root:
+From the repository root:
 
 ```powershell
 python -m pip install -e ".[gui]"
