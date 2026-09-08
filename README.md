@@ -2,196 +2,206 @@
 
 > **Cut the noise. Reveal the story.**
 
-**Kubrick** is a standalone `.dot` tool for precision-first automatic video editing. It is built for real spoken footage — lectures, tutorials, presentations, explainers, interviews, courses, and creator recordings — where bad pacing is obvious but robotic editing is worse.
+**Kubrick** is a precision-first automatic video editor for real spoken footage. It is built to turn long, imperfect recordings into tighter, more watchable edits without making people sound like robots.
+
+Lectures. Tutorials. Presentations. Interviews. Courses. Explainers. Creator recordings.
 
 [![CI](https://github.com/cser-utkarsh-raj/Kubrick/actions/workflows/ci.yml/badge.svg)](https://github.com/cser-utkarsh-raj/Kubrick/actions/workflows/ci.yml)
 
-## What it is
+---
 
-Kubrick is a **desktop-first local video editor**, not a web wrapper and not a component of dotStudio.
+## Why Kubrick exists
 
-It analyzes media, builds explainable editorial decisions, and renders a synchronized result with FFmpeg. Optional local speech intelligence adds word-level timing and conservative editorial evidence.
+Most automatic editors have one of two problems: they barely edit anything, or they cut so aggressively that the speaker loses their natural rhythm.
+
+Kubrick takes a different approach:
+
+> **Be aggressive with objective friction. Be conservative with human meaning.**
+
+The engine builds evidence first, turns that evidence into explainable editorial decisions, and keeps destructive actions inspectable before rendering.
 
 ```text
-                 KUBRICK
+SOURCE FOOTAGE
+      │
+      ├── Audio evidence ── silence / pauses / speech
+      │
+      ├── Speech evidence ── fillers / false starts / repetition
+      │
+      └── Visual evidence ── scene changes / blackouts / freezes
                     │
-        ┌───────────┴───────────┐
-        │                       │
-   MEDIA EVIDENCE          SPEECH EVIDENCE
-        │                       │
-      FFmpeg              Whisper / VAD
-        │                       │
-        └───────────┬───────────┘
-                    ↓
+                    ▼
              EDITORIAL POLICY
                     │
           KEEP / COMPRESS / CUT / REVIEW
                     │
-                    ↓
-             SYNCHRONIZED RENDER
+                    ▼
+             ONE SHARED TIMELINE
+                    │
+                    ▼
+             SYNCHRONIZED OUTPUT
 ```
 
-## The editing philosophy
+## What works today
 
-Kubrick is **precision-first**.
+### Precision editing
 
-> Edit aggressively where the footage is objectively weak; edit conservatively where human nuance matters.
-
-The engine does not treat every silence, filler, or speech-model guess as permission to delete content. Ambiguous editorial findings remain reviewable.
-
-## Current capabilities
-
-### Media
-
-- FFprobe duration validation
-- FFmpeg silence detection
-- configurable `gentle`, `natural`, and `tight` profiles
-- natural pause compression
-- full interval cuts
-- safe merging of overlapping edit ranges
+- FFprobe media validation and duration probing
+- FFmpeg-powered silence detection
+- configurable `gentle`, `natural`, and `tight` editing profiles
+- natural pause compression rather than blunt silence deletion
+- full-interval cuts where evidence supports them
+- overlap-safe timeline construction
 - synchronized video + audio rendering
 - source metadata and chapter preservation
-- JSON analysis reports
-- EOF silence handling
+- machine-readable JSON analysis reports
+- end-of-file silence handling
 
-### Speech
+### Local speech intelligence
 
-Optional local `faster-whisper` support provides:
+When the speech extra is installed, Kubrick can use local `faster-whisper` inference with conservative VAD to produce:
 
-- speech segments
 - word-level timestamps
-- conservative VAD
+- speech segments
 - filler-word evidence
 - false-start evidence
 - repetition evidence
 - extended-pause evidence
-- confidence-aware editorial decisions
+- confidence-aware editorial candidates
 
-Semantic findings are deliberately conservative: Kubrick can recommend a review without silently destroying a potentially meaningful sentence.
+Speech findings are evidence, not automatic permission to delete. Ambiguous material stays reviewable.
 
-## Desktop UI
+### Visual editorial intelligence — Phase 3
 
-Kubrick includes a native **PySide6 desktop interface** with its own cinematic visual identity:
+Kubrick now has a deterministic visual evidence layer powered by FFmpeg:
 
-- dark editorial workspace
-- Kubrick monolith-inspired mark
-- source selection
-- editing profile controls
-- silence threshold controls
-- analysis progress
-- editorial decision table
-- synchronized rendering workflow
+- **Scene-change detection** for hard visual transitions
+- **Blackout detection** for accidental black frames and continuity breaks
+- **Freeze detection** for stalled or frozen footage
+- visual evidence stored alongside the editorial analysis report
+- configurable scene sensitivity
 
-The UI is packaged with the application and the branding SVG is included as package data.
+These signals are deliberately separated from destructive editing policy. A scene change is not automatically a cut, and a visual anomaly is not automatically a bad take.
 
-### Run it locally
+This foundation is designed for the next layer of contextual reasoning: slide-aware editing, visual continuity scoring, and multi-take selection.
+
+## Desktop application
+
+Kubrick is a **native desktop application**, not a browser video editor. The main interface is built with PySide6 and is designed around a focused editorial workflow:
+
+1. Choose a source recording.
+2. Select an editing profile.
+3. Analyze the footage.
+4. Inspect the detected editorial decisions.
+5. Render a tightened copy.
+
+The interface is intentionally dark, cinematic, and information-dense without turning the editor into a dashboard full of noise.
+
+### Launch
 
 ```bash
 python -m pip install -e ".[gui]"
 kubrick-gui
 ```
 
-You also need **FFmpeg and FFprobe** available on your system `PATH`.
+FFmpeg and FFprobe must be available on your system `PATH`.
 
 ## CLI
 
 ```bash
-# Core
+# Install the core engine
 python -m pip install -e .
 
-# Analyze
+# Analyze a recording
 kubrick analyze input.mp4 --profile natural --json analysis.json
 
-# Render
+# Render the editorial plan
 kubrick render input.mp4 output.mp4 --profile natural
 ```
 
-Optional speech support:
+Optional local speech analysis:
 
 ```bash
 python -m pip install -e ".[speech]"
 ```
 
-## Profiles
+## Editing profiles
 
-| Profile | Philosophy |
-|---|---|
-| **Gentle** | Remove only obvious dead air. |
-| **Natural** | Tighten pacing while preserving human rhythm. **Default.** |
-| **Tight** | More aggressive pacing for highly edited material. |
+| Profile | Behaviour | Best for |
+|---|---|---|
+| **Gentle** | Removes only the clearest dead air | interviews, thoughtful talks |
+| **Natural** | Tightens pacing while retaining human rhythm | tutorials, lectures, explainers |
+| **Tight** | More aggressive compression and cleanup | highly edited creator footage |
 
-## Local-first by design
-
-Kubrick's core workflow runs locally. Source footage does not need to be uploaded to a cloud service, and the core engine does not require a paid AI API or user account.
-
-Speech intelligence is optional and can run locally when installed.
+**Natural is the default** because Kubrick optimizes for watchability, not maximum removal.
 
 ## Architecture
 
 ```text
 Kubrick/
 ├── kubrick/
-│   ├── core/       domain models, policies, decisions, timelines
-│   ├── media/      FFmpeg probing, silence detection, rendering
+│   ├── core/       models, policy, decisions, timeline
+│   ├── media/      FFmpeg probing, silence + visual analysis, rendering
 │   ├── speech/     optional local transcription + editorial evidence
-│   ├── editor/     analysis and rendering orchestration
-│   └── ui/         PySide6 desktop application + branding
-├── tests/          behavioral and regression tests
-└── .github/        continuous integration
+│   ├── editor/     analysis + render orchestration
+│   └── ui/         native PySide6 application + branding
+├── api/            lightweight Vercel health/API entrypoint
+├── tests/          behavioral + regression coverage
+└── .github/        CI across supported Python versions
 ```
 
-## `.dot` relationship
+### Local-first architecture
 
-Kubrick is **one standalone tool in the `.dot` ecosystem**, alongside tools such as goPanda and NailedIt.
+The video-processing engine is local-first. Footage does not need to be uploaded to a remote AI service for the core workflow, and the core engine does not require a paid AI API.
 
-It is **not inside dotStudio**, does not depend on dotStudio, and is not planned as a dotStudio module.
+The `/api` surface is intentionally lightweight. **Vercel is not the video-processing runtime**; it exists only to provide a small HTTP surface around the application. Heavy media work remains on the desktop/local engine.
 
-```text
-.dot
-├── goPanda
-├── NailedIt
-├── Kubrick
-├── MyMentor
-├── TerraVault
-└── dotStudio
-```
+## Vercel API
 
-Kubrick owns its own product identity, interface, release lifecycle, and distribution.
+The repository includes an explicit Python entrypoint at `api/index.py` and declares it in `pyproject.toml` so Vercel does not have to guess which Python function to build.
+
+The endpoint is a health/status surface. It is not intended to receive or render large video files.
 
 ## Roadmap
 
-### Phase 1 — Precision foundation
+### Phase 1 — Precision foundation — **complete**
 
-- [x] media duration probing
-- [x] FFmpeg silence analysis
-- [x] configurable editing profiles
-- [x] pause compression
+- [x] media probing
+- [x] silence analysis
+- [x] editing profiles
+- [x] natural pause compression
 - [x] synchronized A/V rendering
-- [x] JSON analysis
+- [x] metadata preservation
+- [x] JSON reports
 - [x] regression coverage
-- [x] desktop UI
+- [x] native desktop UI
 - [x] application branding
 
-### Phase 2 — Speech intelligence
+### Phase 2 — Speech intelligence — **complete foundation**
 
 - [x] local faster-whisper integration
-- [x] filler-word evidence
+- [x] word-level timing
+- [x] conservative VAD
+- [x] filler evidence
 - [x] false-start evidence
 - [x] repetition evidence
 - [x] pause evidence
-- [x] conservative editorial policy
+- [x] confidence-aware editorial candidates
 - [ ] word-aware boundary refinement
 - [ ] correction / retake selection
 
-### Phase 3 — Visual editorial intelligence
+### Phase 3 — Visual editorial intelligence — **complete foundation**
 
-- [ ] scene-change detection
-- [ ] slide-change awareness
-- [ ] visual continuity checks
-- [ ] take selection
-- [ ] confidence-scored review timeline
+- [x] deterministic scene-change detection
+- [x] blackout detection
+- [x] freeze detection
+- [x] visual evidence in analysis reports
+- [x] configurable visual sensitivity
+- [x] visual evidence kept separate from destructive policy
+- [ ] slide-content understanding
+- [ ] visual continuity scoring across candidate edits
+- [ ] multi-take semantic selection
 
-### Phase 4 — Product polish
+### After Phase 3
 
 - [ ] waveform + transcript timeline
 - [ ] before/after preview
@@ -199,19 +209,22 @@ Kubrick owns its own product identity, interface, release lifecycle, and distrib
 - [ ] captions
 - [ ] richer audio cleanup
 - [ ] packaged Windows/macOS/Linux releases
+- [ ] GPU-accelerated analysis where it materially improves throughput
 
 ## Quality bar
 
-Kubrick is not considered finished because a model can find more things to cut.
+Kubrick is not successful because it found the most things to delete.
 
-The quality bar is:
+A release must satisfy these principles:
 
-1. **No broken A/V synchronization.**
-2. **No unexplained destructive edits.**
-3. **Natural pacing survives automatic editing.**
-4. **Ambiguous decisions are reviewable.**
-5. **Real recordings improve perceptibly.**
-6. **The application remains useful without a cloud dependency.**
+1. **A/V never drifts because of an edit.**
+2. **Every destructive decision has evidence.**
+3. **Natural speech rhythm survives automatic editing.**
+4. **Low-confidence findings remain reviewable.**
+5. **Visual anomalies do not become blind automatic cuts.**
+6. **Repeated analysis is deterministic for the same input and settings.**
+7. **The output is measurably tighter without becoming unpleasant to watch.**
+8. **The core workflow remains useful without a cloud dependency.**
 
 ## Development
 
@@ -222,13 +235,13 @@ python -m compileall -q kubrick
 ruff check .
 ```
 
-CI runs the test suite, package compilation, and lint checks across Python 3.11–3.13.
+CI runs tests, compilation, and linting across Python 3.11–3.13.
 
 ## Status
 
-**Active development — v0.2.1.**
+**Active development — v0.3.0**
 
-The foundation is functional. The next major milestone is turning the existing evidence pipeline into a genuinely trustworthy automatic editor on real footage.
+Phase 1 is production-oriented foundation work. Phase 2 and Phase 3 now have local speech and visual evidence pipelines; the next milestone is turning that evidence into a richer, reviewable editorial timeline before adding more automation.
 
 ## License
 
