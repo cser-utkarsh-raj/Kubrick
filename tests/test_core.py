@@ -1,4 +1,4 @@
-from kubrick.core import DecisionKind, PROFILES, SilencePolicy, TimeRange, build_keep_segments
+from kubrick.core import DecisionKind, EditDecision, PROFILES, SilencePolicy, TimeRange, build_keep_segments
 
 
 def test_time_range_duration():
@@ -20,5 +20,6 @@ def test_compression_preserves_natural_pause():
 
 
 def test_cut_removes_entire_interval():
-    decision = SilencePolicy(PROFILES["tight"]).decide([TimeRange(1, 1.02)])[0] if False else None
-    assert decision is None
+    decision = EditDecision(TimeRange(3, 5), DecisionKind.CUT, 1.0, "explicit cut")
+    segments = build_keep_segments(8, [decision])
+    assert [(x.source.start, x.source.end) for x in segments] == [(0.0, 3.0), (5.0, 8.0)]
