@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kubrick"
-version = "0.2.1"
+version = "0.3.0"
 description = "Precision-first local video editing engine"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -19,6 +19,9 @@ all = ["pyside6>=6.8,<7", "faster-whisper>=1.2,<2", "pytest>=8,<9", "ruff>=0.9,<
 [project.scripts]
 kubrick = "kubrick.cli:main"
 kubrick-gui = "kubrick.ui.app:main"
+
+[tool.vercel]
+entrypoint = "api/index.py"
 
 [tool.setuptools.packages.find]
 include = ["kubrick*"]
