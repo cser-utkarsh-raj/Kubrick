@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRect, Qt, Signal
-from PySide6.QtGui import QBrush, QFont, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from kubrick.core import Project
@@ -113,11 +113,11 @@ class TimelineWidget(QWidget):
     def paintEvent(self, _event) -> None:  # pragma: no cover - visual rendering
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QBrush("#090909"))
+        painter.fillRect(self.rect(), QBrush(QColor("#090909")))
         duration = self._duration()
         tracks = self._tracks()
 
-        painter.setPen(QPen("#343434"))
+        painter.setPen(QPen(QColor("#343434")))
         painter.drawLine(self.LEFT, 0, self.LEFT, self.height())
         painter.setFont(QFont("Segoe UI", 8))
         tick = 1.0
@@ -130,33 +130,33 @@ class TimelineWidget(QWidget):
         value = 0.0
         while value <= duration + 0.01:
             x = self._x_for_time(value)
-            painter.setPen(QPen("#252525"))
+            painter.setPen(QPen(QColor("#252525")))
             painter.drawLine(QPointF(x, self.RULER), QPointF(x, self.height()))
-            painter.setPen(QPen("#77736e"))
+            painter.setPen(QPen(QColor("#77736e")))
             painter.drawText(int(x + 3), 17, self._format_time(value))
             value += tick
 
         for row, (track, index, start, end, label) in enumerate(tracks):
             y = self.RULER + row * self.ROW
-            painter.setPen(QPen("#222222"))
+            painter.setPen(QPen(QColor("#222222")))
             painter.drawLine(0, y + self.ROW - 1, self.width(), y + self.ROW - 1)
-            painter.setPen(QPen("#aaa59d"))
+            painter.setPen(QPen(QColor("#aaa59d")))
             painter.drawText(10, y + 26, track)
             left = self._x_for_time(start)
             right = max(left + 4, self._x_for_time(end))
             block = QRect(int(left), int(y + 7), int(right - left), self.ROW - 14)
             selected = self._drag and self._drag.index == index and self._drag.track == track.lower()
-            painter.setBrush(QBrush("#261513" if selected else "#171717"))
-            painter.setPen(QPen("#6f2d27"))
+            painter.setBrush(QBrush(QColor("#261513" if selected else "#171717")))
+            painter.setPen(QPen(QColor("#6f2d27")))
             painter.drawRoundedRect(block, 6, 6)
-            painter.setPen(QPen("#d8d2ca"))
+            painter.setPen(QPen(QColor("#d8d2ca")))
             text = label.rsplit("/", 1)[-1]
             painter.drawText(block.adjusted(9, 0, -9, 0), Qt.AlignmentFlag.AlignVCenter, text)
 
         playhead_x = self._x_for_time(min(duration, self.position))
-        painter.setPen(QPen("#d52b1e", 2))
+        painter.setPen(QPen(QColor("#d52b1e"), 2))
         painter.drawLine(QPointF(playhead_x, 0), QPointF(playhead_x, self.height()))
-        painter.setBrush(QBrush("#d52b1e"))
+        painter.setBrush(QBrush(QColor("#d52b1e")))
         painter.drawEllipse(QPointF(playhead_x, 5), 4, 4)
 
     def mousePressEvent(self, event) -> None:  # pragma: no cover - Qt interaction
