@@ -6,7 +6,7 @@ from pathlib import Path
 
 try:
     from PySide6.QtCore import QObject, QThread, Qt, QUrl, Signal
-    from PySide6.QtGui import QIcon
+    from PySide6.QtGui import QIcon, QKeySequence, QShortcut
     from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
     from PySide6.QtMultimediaWidgets import QVideoWidget
     from PySide6.QtWidgets import (
@@ -20,17 +20,16 @@ try:
         QMainWindow,
         QMessageBox,
         QPushButton,
+        QScrollArea,
         QSlider,
         QSplitter,
-        QTableWidget,
-        QTableWidgetItem,
         QVBoxLayout,
         QWidget,
     )
 except ImportError as exc:  # pragma: no cover
     raise RuntimeError("Install the GUI extra with: python -m pip install -e '.[gui]'") from exc
 
-from kubrick.core import AudioClip, MediaClip, Overlay, Project, get_preset
+from kubrick.core import AudioClip, MediaClip, Overlay, Project
 from kubrick.editor import (
     add_audio,
     add_filter,
@@ -41,6 +40,7 @@ from kubrick.editor import (
     trim_clip,
 )
 from kubrick.media import probe_duration, render_project
+from kubrick.ui.timeline import TimelineWidget
 
 APP_DIR = Path(__file__).resolve().parent
 MARK = APP_DIR / "kubrick-mark.svg"
@@ -68,10 +68,7 @@ QPushButton#nav:hover, QPushButton#navActive { background:#251311; color:#f4efe8
 QVideoWidget { background:#050505; border:1px solid #282828; border-radius:10px; }
 QSlider::groove:horizontal { height:4px; background:#292929; }
 QSlider::handle:horizontal { width:12px; margin:-4px 0; border-radius:6px; background:#d52b1e; }
-QTableWidget { background:#0a0a0a; border:1px solid #252525; border-radius:9px; gridline-color:#1e1e1e; }
-QHeaderView::section { background:#121212; color:#77736e; border:0; border-bottom:1px solid #282828; padding:7px; font-size:9px; }
-QTableWidget::item { padding:6px; color:#d4cfc8; }
-QTableWidget::item:selected { background:#2b1513; color:white; }
+QScrollArea { background:#090909; border:0; }
 QStatusBar { background:#0d0d0d; color:#77736e; border-top:1px solid #222; }
 """
 
@@ -110,6 +107,7 @@ class MainWindow(QMainWindow):
         self._worker: Worker | None = None
         self._building = False
         self._build()
+        self._install_shortcuts()
         self._reset_project()
 
     def _build(self) -> None:
@@ -122,6 +120,24 @@ class MainWindow(QMainWindow):
         shell.setLayout(root)
         self.setCentralWidget(shell)
         self.statusBar().showMessage("Ready")
+
+    def _install_shortcuts(self) -> None:
+        shortcuts = [
+            ("Space", self._toggle_play),
+            ("Left", lambda: self._nudge_position(-100)),
+            ("Right", lambda: self._nudge_position(100)),
+            ("Shift+Left", lambda: self._nudge_position(-1000)),
+            ("Shift+Right", lambda: self._nudge_position(1000)),
+            ("I", self._set_in),
+            ("O", self._set_out),
+            ("Ctrl+Z", self._undo),
+            ("Ctrl+Shift+Z", self._redo),
+        ]
+        self._shortcuts = []
+        for sequence, slot in shortcuts:
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.activated.connect(slot)
+            self._shortcuts.append(shortcut)
 
     def _sidebar(self) -> QWidget:
         side = QFrame()
@@ -349,6 +365,9 @@ class MainWindow(QMainWindow):
         eyebrow = QLabel("TIMELINE")
         eyebrow.setObjectName("eyebrow")
         head.addWidget(eyebrow)
+        hint = QLabel("Click to seek · drag audio/layers · Ctrl+wheel to zoom")
+        hint.setObjectName("muted")
+        head.addWidget(hint)
         head.addStretch()
         self.cut_start = QLineEdit("0")
         self.cut_start.setMaximumWidth(80)
@@ -362,13 +381,14 @@ class MainWindow(QMainWindow):
         head.addWidget(self.cut_end)
         head.addWidget(cut)
         layout.addLayout(head)
-        self.timeline = QTableWidget(0, 5)
-        self.timeline.setHorizontalHeaderLabels(["TRACK", "SOURCE", "START", "END", "DURATION"])
-        self.timeline.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.timeline.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.timeline.cellClicked.connect(self._timeline_selected)
-        self.timeline.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.timeline, 1)
+        self.timeline = TimelineWidget()
+        self.timeline.clip_selected.connect(self._timeline_selected)
+        self.timeline.position_selected.connect(self._timeline_position)
+        self.timeline.clip_moved.connect(self._timeline_moved)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(False)
+        scroll.setWidget(self.timeline)
+        layout.addWidget(scroll, 1)
         return panel
 
     def _reset_project(self) -> None:
@@ -400,10 +420,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "Kubrick", f"Could not inspect media:\n{exc}")
             return
-        self.project = Project(
-            name=source.stem,
-            video=[MediaClip(str(source), 0, duration, 0)],
-        )
+        self.project = Project(name=source.stem, video=[MediaClip(str(source), 0, duration, 0)])
         self.source = source
         self.history.clear()
         self.future.clear()
@@ -423,6 +440,7 @@ class MainWindow(QMainWindow):
             return
         try:
             project = Project.load(path)
+            project.validate()
             self._set_project(project, push_history=False)
             self.status.setText(f"Loaded · {Path(path).name}")
         except Exception as exc:
@@ -478,36 +496,48 @@ class MainWindow(QMainWindow):
         self.auto.setEnabled(False)
         self.render.setEnabled(False)
         self.status.setText(f"Analyzing with {preset_name}…")
-        self._run_worker(
-            lambda: build_preset_project(self.source, preset_name),
-            self._auto_done,
-        )
+        self._run_worker(lambda: build_preset_project(self.source, preset_name), self._auto_done)
 
     def _auto_done(self, project: Project) -> None:
         self._building = False
         self.auto.setEnabled(True)
         self.render.setEnabled(True)
         self._set_project(project)
-        self.review.setText(
-            f"Auto edit produced {len(project.video)} main-video segments. Review them, then render."
-        )
+        self.review.setText(f"Auto edit produced {len(project.video)} main-video segments. Review them, then render.")
         self.status.setText(f"Auto edit ready · {len(project.video)} segments")
 
-    def _timeline_selected(self, row: int, _column: int) -> None:
-        track = self.timeline.item(row, 0)
-        if not track:
-            return
-        self.selected_track = track.text().lower()
-        index_item = self.timeline.item(row, 0)
-        index = index_item.data(Qt.ItemDataRole.UserRole)
-        self.selected_index = int(index) if index is not None else None
+    def _timeline_selected(self, track: str, index: int) -> None:
+        self.selected_track = track
+        self.selected_index = index
         self._update_inspector()
+        if track == "video" and self.project and 0 <= index < len(self.project.video):
+            clip = self.project.video[index]
+            self.player.setSource(QUrl.fromLocalFile(str(clip.path)))
+            self.player.setPosition(int(clip.source_start * 1000))
 
-        if self.selected_track == "video" and self.project and self.selected_index is not None:
-            if 0 <= self.selected_index < len(self.project.video):
-                clip = self.project.video[self.selected_index]
-                self.player.setSource(QUrl.fromLocalFile(str(clip.path)))
-                self.player.setPosition(int(clip.source_start * 1000))
+    def _timeline_position(self, position: float) -> None:
+        self.player.setPosition(int(position * 1000))
+
+    def _timeline_moved(self, track: str, index: int, start: float) -> None:
+        if not self.project:
+            return
+        try:
+            if track == "audio" and 0 <= index < len(self.project.audio):
+                old = self.project.audio[index]
+                updated_audio = list(self.project.audio)
+                updated_audio[index] = AudioClip(old.path, old.source_start, old.source_end, start, old.volume, old.fade_in, old.fade_out)
+                self._set_project(Project(self.project.name, list(self.project.video), updated_audio, list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset))
+                self.status.setText("Audio layer moved")
+            elif track in {"text", "image", "shape"} and 0 <= index < len(self.project.overlays):
+                old = self.project.overlays[index]
+                duration = (old.end - old.start) if old.end is not None else None
+                end = None if duration is None else start + duration
+                updated_overlays = list(self.project.overlays)
+                updated_overlays[index] = Overlay(old.kind, old.value, start, end, old.x, old.y, old.width, old.height, old.font_size, old.color, old.opacity, old.border_radius)
+                self._set_project(Project(self.project.name, list(self.project.video), list(self.project.audio), updated_overlays, self.project.width, self.project.height, self.project.fps, self.project.preset))
+                self.status.setText("Layer moved")
+        except Exception as exc:
+            QMessageBox.critical(self, "Kubrick", str(exc))
 
     def _update_inspector(self) -> None:
         if not self.project or self.selected_index is None or self.selected_track != "video":
@@ -529,31 +559,15 @@ class MainWindow(QMainWindow):
         try:
             start = float(self.trim_start.text())
             end = float(self.trim_end.text())
-            index = self.selected_index
             clips = list(self.project.video)
-            clips[index] = trim_clip(clips[index], start, end)
+            clips[self.selected_index] = trim_clip(clips[self.selected_index], start, end)
             timeline = 0.0
-            for i, clip in enumerate(clips):
-                clips[i] = MediaClip(
-                    clip.path,
-                    clip.source_start,
-                    clip.source_end,
-                    timeline,
-                    clip.volume,
-                    clip.speed,
-                    clip.filters,
-                )
-                timeline += clips[i].duration or 0.0
-            updated = Project(
-                self.project.name,
-                clips,
-                list(self.project.audio),
-                list(self.project.overlays),
-                self.project.width,
-                self.project.height,
-                self.project.fps,
-                self.project.preset,
-            )
+            normalized = []
+            for clip in clips:
+                item = MediaClip(clip.path, clip.source_start, clip.source_end, timeline, clip.volume, clip.speed, clip.filters)
+                normalized.append(item)
+                timeline += item.duration or 0.0
+            updated = Project(self.project.name, normalized, list(self.project.audio), list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset)
             self._set_project(updated)
             self.status.setText("Trim applied")
         except Exception as exc:
@@ -570,37 +584,14 @@ class MainWindow(QMainWindow):
                 raise ValueError("speed must be positive and volume cannot be negative")
             clips = list(self.project.video)
             clip = clips[self.selected_index]
-            clips[self.selected_index] = MediaClip(
-                clip.path,
-                clip.source_start,
-                clip.source_end,
-                clip.timeline_start,
-                volume,
-                speed,
-                clip.filters,
-            )
+            clips[self.selected_index] = MediaClip(clip.path, clip.source_start, clip.source_end, clip.timeline_start, volume, speed, clip.filters)
             timeline = 0.0
-            for i, item in enumerate(clips):
-                clips[i] = MediaClip(
-                    item.path,
-                    item.source_start,
-                    item.source_end,
-                    timeline,
-                    item.volume,
-                    item.speed,
-                    item.filters,
-                )
-                timeline += clips[i].duration or 0.0
-            updated = Project(
-                self.project.name,
-                clips,
-                list(self.project.audio),
-                list(self.project.overlays),
-                self.project.width,
-                self.project.height,
-                self.project.fps,
-                self.project.preset,
-            )
+            normalized = []
+            for item in clips:
+                normalized_item = MediaClip(item.path, item.source_start, item.source_end, timeline, item.volume, item.speed, item.filters)
+                normalized.append(normalized_item)
+                timeline += normalized_item.duration or 0.0
+            updated = Project(self.project.name, normalized, list(self.project.audio), list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset)
             self._set_project(updated)
             self.status.setText("Clip settings applied")
         except Exception as exc:
@@ -611,10 +602,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Kubrick", "Select a video clip first.")
             return
         expression = self.filter.text().strip()
-        self._snapshot_and(
-            lambda project: add_filter(project, expression, self.selected_index),
-            "Filter applied",
-        )
+        self._snapshot_and(lambda project: add_filter(project, expression, self.selected_index), "Filter applied")
 
     def _add_text(self) -> None:
         if not self.project or not self.project.video:
@@ -625,47 +613,22 @@ class MainWindow(QMainWindow):
     def _add_image(self) -> None:
         if not self.project or not self.project.video:
             return
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Choose image",
-            "",
-            "Images (*.png *.jpg *.jpeg *.webp)",
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Choose image", "", "Images (*.png *.jpg *.jpeg *.webp)")
         if not path:
             return
-        overlay = Overlay(
-            "image",
-            path,
-            0,
-            min(3.0, project_duration(self.project)),
-            width=420,
-            height=240,
-        )
+        overlay = Overlay("image", path, 0, min(3.0, project_duration(self.project)), width=420, height=240)
         self._snapshot_and(lambda project: add_overlay(project, overlay), "Image layer added")
 
     def _add_shape(self) -> None:
         if not self.project or not self.project.video:
             return
-        overlay = Overlay(
-            "shape",
-            "#d52b1e",
-            0,
-            min(2.0, project_duration(self.project)),
-            width=420,
-            height=120,
-            opacity=0.85,
-        )
+        overlay = Overlay("shape", "#d52b1e", 0, min(2.0, project_duration(self.project)), width=420, height=120, opacity=0.85)
         self._snapshot_and(lambda project: add_overlay(project, overlay), "Shape layer added")
 
     def _add_audio(self) -> None:
         if not self.project or not self.project.video:
             return
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Choose audio",
-            "",
-            "Audio files (*.mp3 *.wav *.m4a *.aac *.flac *.ogg);;All files (*)",
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Choose audio", "", "Audio files (*.mp3 *.wav *.m4a *.aac *.flac *.ogg);;All files (*)")
         if not path:
             return
         try:
@@ -679,8 +642,7 @@ class MainWindow(QMainWindow):
     def _remove_selected(self) -> None:
         if not self.project or self.selected_index is None or not self.selected_track:
             return
-        track = self.selected_track
-        index = self.selected_index
+        track, index = self.selected_track, self.selected_index
         if track == "video" and index < len(self.project.video):
             if len(self.project.video) == 1:
                 QMessageBox.warning(self, "Kubrick", "A project needs at least one video clip.")
@@ -689,58 +651,20 @@ class MainWindow(QMainWindow):
             timeline = 0.0
             normalized = []
             for clip in clips:
-                normalized.append(
-                    MediaClip(
-                        clip.path,
-                        clip.source_start,
-                        clip.source_end,
-                        timeline,
-                        clip.volume,
-                        clip.speed,
-                        clip.filters,
-                    )
-                )
-                timeline += normalized[-1].duration or 0.0
-            updated = Project(
-                self.project.name,
-                normalized,
-                list(self.project.audio),
-                list(self.project.overlays),
-                self.project.width,
-                self.project.height,
-                self.project.fps,
-                self.project.preset,
-            )
+                item = MediaClip(clip.path, clip.source_start, clip.source_end, timeline, clip.volume, clip.speed, clip.filters)
+                normalized.append(item)
+                timeline += item.duration or 0.0
+            updated = Project(self.project.name, normalized, list(self.project.audio), list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset)
             self._set_project(updated)
-            self.selected_index = None
-            self.selected_track = None
-            self.status.setText("Clip removed")
         elif track == "audio" and index < len(self.project.audio):
-            updated = Project(
-                self.project.name,
-                list(self.project.video),
-                [clip for i, clip in enumerate(self.project.audio) if i != index],
-                list(self.project.overlays),
-                self.project.width,
-                self.project.height,
-                self.project.fps,
-                self.project.preset,
-            )
+            updated = Project(self.project.name, list(self.project.video), [clip for i, clip in enumerate(self.project.audio) if i != index], list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset)
             self._set_project(updated)
-            self.status.setText("Audio layer removed")
         elif track in {"text", "image", "shape"} and index < len(self.project.overlays):
-            updated = Project(
-                self.project.name,
-                list(self.project.video),
-                list(self.project.audio),
-                [overlay for i, overlay in enumerate(self.project.overlays) if i != index],
-                self.project.width,
-                self.project.height,
-                self.project.fps,
-                self.project.preset,
-            )
+            updated = Project(self.project.name, list(self.project.video), list(self.project.audio), [overlay for i, overlay in enumerate(self.project.overlays) if i != index], self.project.width, self.project.height, self.project.fps, self.project.preset)
             self._set_project(updated)
-            self.status.setText("Layer removed")
+        self.selected_index = None
+        self.selected_track = None
+        self.status.setText("Selection removed")
 
     def _cut_range(self) -> None:
         if not self.project or not self.project.video:
@@ -748,12 +672,21 @@ class MainWindow(QMainWindow):
         try:
             start = float(self.cut_start.text())
             end = float(self.cut_end.text())
-            self._snapshot_and(
-                lambda project: cut_range(project, start, end),
-                f"Cut {start:.2f}–{end:.2f}s",
-            )
+            self._snapshot_and(lambda project: cut_range(project, start, end), f"Cut {start:.2f}–{end:.2f}s")
         except ValueError as exc:
             QMessageBox.critical(self, "Kubrick", str(exc))
+
+    def _set_in(self) -> None:
+        self.cut_start.setText(f"{self.player.position() / 1000:.3f}")
+        self.status.setText("In point set")
+
+    def _set_out(self) -> None:
+        self.cut_end.setText(f"{self.player.position() / 1000:.3f}")
+        self.status.setText("Out point set")
+
+    def _nudge_position(self, milliseconds: int) -> None:
+        position = max(0, min(self.player.duration(), self.player.position() + milliseconds))
+        self.player.setPosition(position)
 
     def _undo(self) -> None:
         if not self.history or self.project is None:
@@ -783,12 +716,12 @@ class MainWindow(QMainWindow):
         if not self.project or not self.project.video:
             QMessageBox.warning(self, "Kubrick", "Import footage first.")
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Render video",
-            f"{self.project.name}_kubrick.mp4",
-            "MP4 video (*.mp4)",
-        )
+        try:
+            self.project.validate()
+        except Exception as exc:
+            QMessageBox.critical(self, "Kubrick", f"Project validation failed:\n{exc}")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Render video", f"{self.project.name}_kubrick.mp4", "MP4 video (*.mp4)")
         if not path:
             return
         project = copy.deepcopy(self.project)
@@ -848,6 +781,7 @@ class MainWindow(QMainWindow):
     def _position_changed(self, position: int) -> None:
         self.seek.setValue(position)
         self.time.setText(f"{self._format_ms(position)} / {self._format_ms(self.player.duration())}")
+        self.timeline.set_position(position / 1000)
 
     def _duration_changed(self, duration: int) -> None:
         self.seek.setRange(0, max(0, duration))
@@ -863,40 +797,9 @@ class MainWindow(QMainWindow):
         return f"{minutes:02d}:{seconds:02d}"
 
     def _refresh(self) -> None:
-        self.timeline.setRowCount(0)
-        if not self.project:
-            self.clip_info.setText("No project")
-            return
-        row = 0
-        for index, clip in enumerate(sorted(self.project.video, key=lambda item: item.timeline_start)):
-            self.timeline.insertRow(row)
-            self._set_timeline_row(row, "VIDEO", index, clip.path, clip.timeline_start, clip.timeline_start + (clip.duration or 0.0))
-            row += 1
-        for index, clip in enumerate(self.project.audio):
-            duration = 0.0 if clip.source_end is None else clip.source_end - clip.source_start
-            self.timeline.insertRow(row)
-            self._set_timeline_row(row, "AUDIO", index, clip.path, clip.timeline_start, clip.timeline_start + duration)
-            row += 1
-        for index, overlay in enumerate(self.project.overlays):
-            end = overlay.end if overlay.end is not None else project_duration(self.project)
-            self.timeline.insertRow(row)
-            self._set_timeline_row(row, overlay.kind.upper(), index, overlay.value, overlay.start, end)
-            row += 1
+        self.timeline.set_project(self.project)
+        self.timeline.set_position(self.player.position() / 1000)
         self._update_inspector()
-
-    def _set_timeline_row(self, row: int, track: str, index: int, source: str, start: float, end: float) -> None:
-        values = [
-            track,
-            Path(source).name if track in {"VIDEO", "AUDIO", "IMAGE"} else source,
-            f"{start:.2f}",
-            f"{end:.2f}",
-            f"{max(0.0, end - start):.2f}",
-        ]
-        for column, value in enumerate(values):
-            item = QTableWidgetItem(value)
-            if column == 0:
-                item.setData(Qt.ItemDataRole.UserRole, index)
-            self.timeline.setItem(row, column, item)
 
 
 def main() -> int:
