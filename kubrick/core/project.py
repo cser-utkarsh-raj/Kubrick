@@ -103,6 +103,9 @@ class Project:
         for clip in [*self.video, *self.audio]:
             if not Path(clip.path).is_file():
                 raise FileNotFoundError(clip.path)
+        for overlay in self.overlays:
+            if overlay.kind == "image" and not Path(overlay.value).is_file():
+                raise FileNotFoundError(overlay.value)
         if self.width is not None and self.width <= 0:
             raise ValueError("width must be positive")
         if self.height is not None and self.height <= 0:
@@ -117,7 +120,12 @@ class Project:
     def from_dict(cls, data: dict[str, Any]) -> Project:
         return cls(
             name=str(data.get("name", "Untitled")),
-            video=[MediaClip(**{**item, "filters": tuple(item.get("filters", ()))}) for item in data.get("video", [])],
+            video=[
+                MediaClip(
+                    **{**item, "filters": tuple(item.get("filters", ()))},
+                )
+                for item in data.get("video", [])
+            ],
             audio=[AudioClip(**item) for item in data.get("audio", [])],
             overlays=[Overlay(**item) for item in data.get("overlays", [])],
             width=data.get("width"),
@@ -129,7 +137,10 @@ class Project:
     def save(self, path: str | Path) -> None:
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(json.dumps(self.to_dict(), indent=2) + "\n", encoding="utf-8")
+        destination.write_text(
+            json.dumps(self.to_dict(), indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     @classmethod
     def load(cls, path: str | Path) -> Project:
