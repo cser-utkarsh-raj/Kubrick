@@ -15,28 +15,37 @@ def trim_clip(clip: MediaClip, start: float, end: float) -> MediaClip:
 
 
 def cut_range(project: Project, start: float, end: float) -> Project:
-    """Remove a timeline interval while preserving the remaining clip media."""
+    """Remove a timeline interval while preserving the remaining media."""
     if end <= start or start < 0:
         raise ValueError("cut range must be positive")
     out: list[MediaClip] = []
+    removed = end - start
     for clip in project.video:
         duration = clip.duration
         if duration is None:
             raise ValueError("cut_range requires bounded video clips")
         clip_start, clip_end = clip.timeline_start, clip.timeline_start + duration
-        if end <= clip_start or start >= clip_end:
+        if end <= clip_start:
+            out.append(replace(clip, timeline_start=max(0.0, clip.timeline_start - removed)))
+            continue
+        if start >= clip_end:
             out.append(clip)
             continue
         left = max(clip_start, start)
         right = min(clip_end, end)
         source_left_end = clip.source_start + (left - clip_start) * clip.speed
         source_right_start = clip.source_start + (right - clip_start) * clip.speed
+        overlap = right - left
         if left > clip_start:
             out.append(replace(clip, source_end=source_left_end))
         if right < clip_end:
-            shift = end - start if right == clip_end else right - left
-            new_start = clip.timeline_start + (right - clip_start) - (end - start if right == clip_end else 0)
-            out.append(replace(clip, source_start=source_right_start, timeline_start=max(0.0, new_start)))
+            out.append(
+                replace(
+                    clip,
+                    source_start=source_right_start,
+                    timeline_start=max(0.0, clip.timeline_start + (right - clip_start) - overlap),
+                )
+            )
     out.sort(key=lambda c: c.timeline_start)
     return Project(project.name, out, list(project.audio), list(project.overlays), project.width, project.height, project.fps, project.preset)
 
