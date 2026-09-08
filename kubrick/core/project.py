@@ -117,7 +117,7 @@ class Project:
     def from_dict(cls, data: dict[str, Any]) -> Project:
         return cls(
             name=str(data.get("name", "Untitled")),
-            video=[MediaClip(**item) for item in data.get("video", [])],
+            video=[MediaClip(**{**item, "filters": tuple(item.get("filters", ()))}) for item in data.get("video", [])],
             audio=[AudioClip(**item) for item in data.get("audio", [])],
             overlays=[Overlay(**item) for item in data.get("overlays", [])],
             width=data.get("width"),
