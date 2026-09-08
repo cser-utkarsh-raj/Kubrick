@@ -2,7 +2,20 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from kubrick.core.project import MediaClip, Project
+from kubrick.core.project import AudioClip, MediaClip, Overlay, Project
+
+
+def _copy_project(project: Project, *, video=None, audio=None, overlays=None) -> Project:
+    return Project(
+        name=project.name,
+        video=list(project.video if video is None else video),
+        audio=list(project.audio if audio is None else audio),
+        overlays=list(project.overlays if overlays is None else overlays),
+        width=project.width,
+        height=project.height,
+        fps=project.fps,
+        preset=project.preset,
+    )
 
 
 def trim_clip(clip: MediaClip, start: float, end: float) -> MediaClip:
@@ -14,40 +27,115 @@ def trim_clip(clip: MediaClip, start: float, end: float) -> MediaClip:
     return replace(clip, source_start=start, source_end=end)
 
 
+def project_duration(project: Project) -> float:
+    """Return the end of the main video timeline."""
+    return max((clip.timeline_start + (clip.duration or 0.0) for clip in project.video), default=0.0)
+
+
+def _audio_duration(clip: AudioClip) -> float:
+    if clip.source_end is None:
+        return 0.0
+    return max(0.0, clip.source_end - clip.source_start)
+
+
+def _map_after_cut(value: float, start: float, end: float) -> float:
+    if value <= start:
+        return value
+    if value >= end:
+        return value - (end - start)
+    return start
+
+
 def cut_range(project: Project, start: float, end: float) -> Project:
-    """Remove a timeline interval while preserving the remaining media."""
+    """Remove a timeline interval and keep video/audio/layers synchronized."""
     if end <= start or start < 0:
         raise ValueError("cut range must be positive")
-    out: list[MediaClip] = []
+    duration = project_duration(project)
+    if end > duration + 1e-6:
+        raise ValueError(f"cut end {end:.3f}s exceeds project duration {duration:.3f}s")
+
     removed = end - start
+    out_video: list[MediaClip] = []
     for clip in project.video:
-        duration = clip.duration
-        if duration is None:
-            raise ValueError("cut_range requires bounded video clips")
-        clip_start, clip_end = clip.timeline_start, clip.timeline_start + duration
+        clip_start = clip.timeline_start
+        clip_end = clip_start + (clip.duration or 0.0)
         if end <= clip_start:
-            out.append(replace(clip, timeline_start=max(0.0, clip.timeline_start - removed)))
+            out_video.append(replace(clip, timeline_start=clip_start - removed))
             continue
         if start >= clip_end:
-            out.append(clip)
+            out_video.append(clip)
             continue
         left = max(clip_start, start)
         right = min(clip_end, end)
         source_left_end = clip.source_start + (left - clip_start) * clip.speed
         source_right_start = clip.source_start + (right - clip_start) * clip.speed
-        overlap = right - left
         if left > clip_start:
-            out.append(replace(clip, source_end=source_left_end))
+            out_video.append(replace(clip, source_end=source_left_end))
         if right < clip_end:
-            out.append(
+            out_video.append(
                 replace(
                     clip,
                     source_start=source_right_start,
-                    timeline_start=max(0.0, clip.timeline_start + (right - clip_start) - overlap),
+                    timeline_start=clip_start + (left - clip_start),
                 )
             )
-    out.sort(key=lambda c: c.timeline_start)
-    return Project(project.name, out, list(project.audio), list(project.overlays), project.width, project.height, project.fps, project.preset)
+
+    out_audio: list[AudioClip] = []
+    for clip in project.audio:
+        clip_duration = _audio_duration(clip)
+        clip_start = clip.timeline_start
+        clip_end = clip_start + clip_duration
+        if end <= clip_start:
+            out_audio.append(replace(clip, timeline_start=clip_start - removed))
+            continue
+        if start >= clip_end:
+            out_audio.append(clip)
+            continue
+        left = max(clip_start, start)
+        right = min(clip_end, end)
+        source_left_end = clip.source_start + (left - clip_start)
+        source_right_start = clip.source_start + (right - clip_start)
+        if left > clip_start:
+            out_audio.append(replace(clip, source_end=source_left_end))
+        if right < clip_end:
+            out_audio.append(
+                replace(
+                    clip,
+                    source_start=source_right_start,
+                    timeline_start=clip_start + (left - clip_start),
+                    fade_in=0.0,
+                )
+            )
+
+    out_overlays: list[Overlay] = []
+    for overlay in project.overlays:
+        overlay_end = overlay.end if overlay.end is not None else duration
+        if overlay_end <= start:
+            out_overlays.append(overlay)
+            continue
+        if overlay.start >= end:
+            out_overlays.append(
+                replace(
+                    overlay,
+                    start=overlay.start - removed,
+                    end=None if overlay.end is None else overlay.end - removed,
+                )
+            )
+            continue
+        new_start = _map_after_cut(overlay.start, start, end)
+        new_end = _map_after_cut(overlay_end, start, end)
+        if new_end > new_start + 1e-6:
+            out_overlays.append(
+                replace(
+                    overlay,
+                    start=new_start,
+                    end=None if overlay.end is None else new_end,
+                )
+            )
+
+    out_video.sort(key=lambda clip: clip.timeline_start)
+    out_audio.sort(key=lambda clip: clip.timeline_start)
+    return _copy_project(project, video=out_video, audio=out_audio, overlays=out_overlays)
 
 
 def merge_clips(*clips: MediaClip) -> Project:
@@ -75,4 +163,14 @@ def add_filter(project: Project, filter_expression: str, clip_index: int | None 
         if index < 0 or index >= len(clips):
             raise IndexError("clip_index out of range")
         clips[index] = replace(clips[index], filters=(*clips[index].filters, expression))
-    return Project(project.name, clips, list(project.audio), list(project.overlays), project.width, project.height, project.fps, project.preset)
+    return _copy_project(project, video=clips)
+
+
+def add_audio(project: Project, clip: AudioClip) -> Project:
+    """Add an external audio layer to the project."""
+    return _copy_project(project, audio=[*project.audio, clip])
+
+
+def add_overlay(project: Project, overlay: Overlay) -> Project:
+    """Add a text, image, or shape layer."""
+    return _copy_project(project, overlays=[*project.overlays, overlay])
