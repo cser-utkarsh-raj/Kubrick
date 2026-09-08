@@ -62,7 +62,7 @@ class AnalysisReport:
         return sum(
             d.source.duration - (d.target_duration or 0)
             for d in self.decisions
-            if d.kind is not DecisionKind.KEEP
+            if d.kind in {DecisionKind.CUT, DecisionKind.COMPRESS}
         )
 
     @property
