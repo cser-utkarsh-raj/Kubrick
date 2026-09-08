@@ -1,3 +1,4 @@
+from .compositor import render_project
 from .ffmpeg import FFmpegError, probe_duration, render_keep_segments
 from .visual import (
     SceneChange,
@@ -18,4 +19,5 @@ __all__ = [
     "detect_scene_changes",
     "probe_duration",
     "render_keep_segments",
+    "render_project",
 ]
