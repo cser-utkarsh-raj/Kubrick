@@ -1,8 +1,0 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "routes": [
-    { "src": "/api(?:/(.*))?", "dest": "/api/index.py" },
-    { "src": "/kubrick/ui/(.*)", "dest": "/kubrick/ui/$1" },
-    { "src": "/(.*)", "dest": "/index.html" }
-  ]
-}
