@@ -20,9 +20,6 @@ all = ["pyside6>=6.8,<7", "faster-whisper>=1.2,<2", "pytest>=8,<9", "ruff>=0.9,<
 kubrick = "kubrick.cli:main"
 kubrick-gui = "kubrick.ui.app:main"
 
-[tool.vercel]
-entrypoint = "api/index.py"
-
 [tool.setuptools.packages.find]
 include = ["kubrick*"]
 
