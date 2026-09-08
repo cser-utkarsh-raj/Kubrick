@@ -1,26 +1,22 @@
 from __future__ import annotations
 
-import os
-
 import pytest
-
-pytest.importorskip("PySide6")
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-from PySide6.QtWidgets import QApplication
-
-from kubrick.core import AudioClip, MediaClip, Overlay, Project
-from kubrick.ui.timeline import TimelineWidget
 
 
 @pytest.fixture(scope="module")
 def qt_app():
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+
     app = QApplication.instance() or QApplication([])
     yield app
     app.quit()
 
 
 def test_timeline_tracks_shared_project_clock(qt_app) -> None:
+    from kubrick.core import AudioClip, MediaClip, Overlay, Project
+    from kubrick.ui.timeline import TimelineWidget
+
     project = Project(
         video=[MediaClip("video.mp4", 0, 10)],
         audio=[AudioClip("music.wav", 0, 4, 3)],
@@ -40,6 +36,9 @@ def test_timeline_tracks_shared_project_clock(qt_app) -> None:
 
 
 def test_timeline_has_content_width_for_zoom(qt_app) -> None:
+    from kubrick.core import MediaClip, Project
+    from kubrick.ui.timeline import TimelineWidget
+
     widget = TimelineWidget()
     widget.set_project(Project(video=[MediaClip("video.mp4", 0, 120)]))
     assert widget.minimumWidth() >= int(widget.LEFT + 120 * widget.zoom)
