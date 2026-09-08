@@ -15,8 +15,9 @@
 - Apply **FFmpeg video filters**.
 - Add **external audio** with volume and fades.
 - Add timed **text, image and shape layers**.
-- Save the edit as a portable `.kubrick.json` project.
-- Reopen the project and continue editing.
+- Save the edit as a portable `.kubrick.json` project with an explicit schema version.
+- Reopen projects with media paths resolved relative to the project file.
+- Validate a project before rendering.
 - Render the project to synchronized MP4 locally.
 
 The important architecture is:
@@ -147,6 +148,9 @@ Presets are intentionally small and composable rather than opaque AI styles.
 - timed shapes
 - output metadata
 - preset information
+- schema versioning for forward compatibility
+
+Project saves are atomic, so an interrupted write does not replace a healthy existing project with a partial JSON file.
 
 Example Python API:
 
@@ -181,6 +185,12 @@ Create editable automatic project:
 
 ```bash
 kubrick new-project input.mp4 edit.kubrick.json --preset clean
+```
+
+Validate an editable project before rendering:
+
+```bash
+kubrick validate-project edit.kubrick.json
 ```
 
 Render editable project:
@@ -218,6 +228,7 @@ Kubrick is not successful because it deletes the most footage.
 5. Projects should remain editable after analysis.
 6. The same settings/input should produce deterministic results.
 7. Core editing should work without a cloud dependency.
+8. A project file must fail safely rather than silently corrupting an edit.
 
 ## Development
 
@@ -228,7 +239,7 @@ python -m compileall -q kubrick
 ruff check .
 ```
 
-CI covers Python 3.11–3.13.
+CI covers Python 3.11–3.13, real FFmpeg render fixtures, and a headless desktop UI smoke test.
 
 ## Roadmap
 
@@ -246,6 +257,7 @@ CI covers Python 3.11–3.13.
 - [x] text / image / shape layers
 - [x] presets
 - [x] project save/load
+- [x] project schema validation and atomic saves
 - [x] project compositor
 
 ### Editor — current focus
@@ -256,11 +268,11 @@ CI covers Python 3.11–3.13.
 - [x] automatic preset editing
 - [x] timeline representation
 - [x] basic cut/filter/layer controls
+- [x] undo/redo history
 - [ ] true draggable multi-track timeline
 - [ ] waveform visualization
 - [ ] transcript/word timeline
 - [ ] approve/reject/modify decision cards
-- [ ] undo/redo history
 - [ ] richer audio tools
 
 ### Release
@@ -269,7 +281,7 @@ CI covers Python 3.11–3.13.
 - [ ] Windows signed `.exe` installer
 - [ ] macOS `.app`
 - [ ] Linux package/AppImage
-- [ ] end-to-end fixture renders in CI
+- [x] end-to-end fixture renders in CI
 - [ ] captions
 - [ ] optional GPU acceleration where useful
 - [ ] semantic slide/take understanding
@@ -278,7 +290,7 @@ CI covers Python 3.11–3.13.
 
 **Active development — v0.3.0**
 
-Kubrick is now past the “analysis script” stage: it has a real editable project model, a practical compositor, automatic editing presets and a functional desktop editor workspace. The next work is depth and polish — especially a true multi-track timeline and release packaging — rather than another architecture rewrite.
+Kubrick is now past the “analysis script” stage: it has a real editable project model, a practical compositor, automatic editing presets and a functional desktop editor workspace. The latest reliability pass adds schema validation, atomic project writes, project-relative media resolution, a pre-render validation CLI, real FFmpeg fixture coverage and a headless Qt startup gate. The remaining work is depth and polish — especially a true multi-track timeline and release packaging — rather than another architecture rewrite.
 
 ## License
 
