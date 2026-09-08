@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 echo.
 echo  KUBRICK - local desktop editor
- echo.
+echo.
 
 if not exist "pyproject.toml" (
   echo ERROR: pyproject.toml was not found.
