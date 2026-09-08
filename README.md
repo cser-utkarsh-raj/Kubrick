@@ -24,10 +24,8 @@ The engine builds evidence first, turns that evidence into explainable editorial
 SOURCE FOOTAGE
       │
       ├── Audio evidence ── silence / pauses / speech
-      │
       ├── Speech evidence ── fillers / false starts / repetition
-      │
-      └── Visual evidence ── scene changes / blackouts / freezes
+      └── Visual evidence ── scenes / blackouts / freezes
                     │
                     ▼
              EDITORIAL POLICY
@@ -75,14 +73,15 @@ Speech findings are evidence, not automatic permission to delete. Ambiguous mate
 Kubrick now has a deterministic visual evidence layer powered by FFmpeg:
 
 - **Scene-change detection** for hard visual transitions
+- **Slide-change boundary awareness** through scene-change evidence, without pretending a hard cut is automatically a slide
 - **Blackout detection** for accidental black frames and continuity breaks
 - **Freeze detection** for stalled or frozen footage
+- **Confidence-scored visual review decisions** surfaced beside normal editorial decisions
+- **Technical take scoring** that can select the cleanest candidate based on detected visual faults
 - visual evidence stored alongside the editorial analysis report
 - configurable scene sensitivity
 
-These signals are deliberately separated from destructive editing policy. A scene change is not automatically a cut, and a visual anomaly is not automatically a bad take.
-
-This foundation is designed for the next layer of contextual reasoning: slide-aware editing, visual continuity scoring, and multi-take selection.
+The important safety boundary is intentional: visual evidence can trigger review, but a scene change, blackout, or freeze is not blindly turned into a destructive cut.
 
 ## Desktop application
 
@@ -142,7 +141,7 @@ Kubrick/
 │   ├── core/       models, policy, decisions, timeline
 │   ├── media/      FFmpeg probing, silence + visual analysis, rendering
 │   ├── speech/     optional local transcription + editorial evidence
-│   ├── editor/     analysis + render orchestration
+│   ├── editor/     analysis, rendering + take scoring
 │   └── ui/         native PySide6 application + branding
 ├── api/            lightweight Vercel health/API entrypoint
 ├── tests/          behavioral + regression coverage
@@ -176,7 +175,7 @@ The endpoint is a health/status surface. It is not intended to receive or render
 - [x] native desktop UI
 - [x] application branding
 
-### Phase 2 — Speech intelligence — **complete foundation**
+### Phase 2 — Speech intelligence — **foundation complete**
 
 - [x] local faster-whisper integration
 - [x] word-level timing
@@ -187,19 +186,20 @@ The endpoint is a health/status surface. It is not intended to receive or render
 - [x] pause evidence
 - [x] confidence-aware editorial candidates
 - [ ] word-aware boundary refinement
-- [ ] correction / retake selection
+- [ ] correction / semantic retake selection
 
-### Phase 3 — Visual editorial intelligence — **complete foundation**
+### Phase 3 — Visual editorial intelligence — **foundation complete**
 
 - [x] deterministic scene-change detection
+- [x] slide-change boundary awareness
 - [x] blackout detection
 - [x] freeze detection
+- [x] visual continuity evidence
+- [x] confidence-scored review decisions
+- [x] technical take scoring / selection
 - [x] visual evidence in analysis reports
-- [x] configurable visual sensitivity
-- [x] visual evidence kept separate from destructive policy
 - [ ] slide-content understanding
-- [ ] visual continuity scoring across candidate edits
-- [ ] multi-take semantic selection
+- [ ] semantic multi-take selection
 
 ### After Phase 3
 
@@ -241,7 +241,7 @@ CI runs tests, compilation, and linting across Python 3.11–3.13.
 
 **Active development — v0.3.0**
 
-Phase 1 is production-oriented foundation work. Phase 2 and Phase 3 now have local speech and visual evidence pipelines; the next milestone is turning that evidence into a richer, reviewable editorial timeline before adding more automation.
+Kubrick now has a coherent local editing foundation across audio, speech, and visual evidence. The next major milestone is a rich, non-destructive editorial timeline that lets users see exactly why every suggested change exists before rendering.
 
 ## License
 
