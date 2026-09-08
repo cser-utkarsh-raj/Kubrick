@@ -8,6 +8,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
     strategy:
       fail-fast: false
       matrix:
@@ -27,8 +29,6 @@ jobs:
       - name: Compile package
         run: python -m compileall -q kubrick
       - name: Smoke-test desktop UI
-        env:
-          QT_QPA_PLATFORM: offscreen
         run: python -c "from PySide6.QtWidgets import QApplication; from kubrick.ui.app import MainWindow; app = QApplication([]); window = MainWindow(); print('Kubrick desktop UI smoke test OK'); window.close(); app.quit()"
       - name: Lint
         run: ruff check .
