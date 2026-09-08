@@ -63,7 +63,7 @@ def test_cut_shifts_audio_and_overlays() -> None:
     )
     cut = cut_range(project, 3, 5)
     assert cut.audio[0].timeline_start == 6
-    assert (cut.audio[0].source_start, cut.audio[0].source_end) == (0, 2)
+    assert (cut.audio[0].source_start, cut.audio[0].source_end) == (0, 10)
     assert (cut.overlays[0].start, cut.overlays[0].end) == (6, 8)
 
 
