@@ -6,8 +6,9 @@ def test_long_pause_is_compressed_not_deleted():
     findings = [EditorialFinding(TimeRange(5, 8), "pause", 0.9, "pause")]
     decisions = decisions_from_findings(findings)
     assert decisions[0].kind is DecisionKind.COMPRESS
+    assert decisions[0].target_duration == 0.45
     plan = build_timeline(10, decisions)
-    assert [(x.source.start, x.source.end) for x in plan.keep] == [(0.0, 5.0), (5.28, 10.0)]
+    assert [(x.source.start, x.source.end) for x in plan.keep] == [(0.0, 5.45), (8.0, 10.0)]
 
 
 def test_semantic_finding_requires_review_by_default():
