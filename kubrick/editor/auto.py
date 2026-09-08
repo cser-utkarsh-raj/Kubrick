@@ -7,23 +7,26 @@ from .analyzer import AnalyzerConfig, analyze
 
 
 def build_auto_project(input_path: str | Path, config: AnalyzerConfig = AnalyzerConfig()) -> Project:
-    """Analyze footage and turn the approved automatic decisions into a project."""
+    """Analyze footage and turn automatic timeline decisions into a project."""
     source = Path(input_path)
     report = analyze(source, config)
     segments = build_keep_segments(report.duration, report.decisions)
-    clips = [
-        MediaClip(
+    clips: list[MediaClip] = []
+    timeline = 0.0
+    for segment in segments:
+        clip = MediaClip(
             path=str(source),
             source_start=segment.source.start,
             source_end=segment.source.end,
-            timeline_start=sum(item.duration or 0 for item in clips),
+            timeline_start=timeline,
         )
-        for segment in segments
-    ]
+        clips.append(clip)
+        timeline += clip.duration or 0.0
     return Project(name=f"Kubrick — {source.stem}", video=clips, preset=config.profile)
 
 
 def build_preset_project(input_path: str | Path, preset_name: str = "clean") -> Project:
+    """Build an automatic edit using one of Kubrick's named presets."""
     preset = get_preset(preset_name)
     project = build_auto_project(
         input_path,
@@ -46,4 +49,5 @@ def build_preset_project(input_path: str | Path, preset_name: str = "clean") -> 
             )
             for clip in project.video
         ]
+    project.preset = preset.name
     return project
