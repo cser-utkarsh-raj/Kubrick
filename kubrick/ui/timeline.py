@@ -47,8 +47,10 @@ class TimelineWidget(QWidget):
     def _resize_to_content(self) -> None:
         duration = self._duration()
         rows = max(1, len(self._tracks()))
-        self.setMinimumSize(int(self.LEFT + duration * self.zoom + 120), self.RULER + rows * self.ROW + 4)
-        self.resize(max(self.width(), self.minimumWidth()), self.minimumHeight())
+        width = int(self.LEFT + duration * self.zoom + 120)
+        height = self.RULER + rows * self.ROW + 4
+        self.setMinimumSize(width, height)
+        self.resize(max(self.width(), width), height)
 
     def set_project(self, project: Project | None) -> None:
         self.project = project
@@ -63,7 +65,10 @@ class TimelineWidget(QWidget):
     def _duration(self) -> float:
         if not self.project or not self.project.video:
             return 1.0
-        return max(1.0, project_duration(self.project))
+        try:
+            return max(1.0, project_duration(self.project))
+        except (TypeError, ValueError):
+            return 1.0
 
     def _x_for_time(self, value: float) -> float:
         return self.LEFT + value * self.zoom
