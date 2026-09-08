@@ -6,15 +6,13 @@ import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
-from .transcribe import SpeechSegment, Word
-from kubrick.core.models import DecisionKind, EditDecision, TimeRange
+from .transcribe import SpeechSegment
+from kubrick.core.models import TimeRange
 
 
 @dataclass(frozen=True, slots=True)
 class EditorialConfig:
-    filler_words: tuple[str, ...] = (
-        "um", "uh", "erm", "hmm", "like", "you know", "i mean"
-    )
+    filler_words: tuple[str, ...] = ("um", "uh", "erm", "hmm", "like", "you know", "i mean")
     min_false_start_words: int = 2
     repetition_similarity: float = 0.88
     min_pause: float = 0.35
@@ -52,8 +50,7 @@ def detect_repetitions(segments: list[SpeechSegment], config: EditorialConfig = 
         if not a or not b:
             continue
         similarity = SequenceMatcher(None, a, b).ratio()
-        gap = current.start - previous.end
-        if similarity >= config.repetition_similarity and gap <= 3.0:
+        if similarity >= config.repetition_similarity and current.start - previous.end <= 3.0:
             findings.append(EditorialFinding(TimeRange(previous.start, current.end), "repetition", similarity, "Adjacent speech is highly repetitive; review the weaker take."))
     return findings
 
@@ -64,15 +61,11 @@ def detect_false_starts(segments: list[SpeechSegment], config: EditorialConfig =
         words = list(segment.words)
         if len(words) < config.min_false_start_words + 1:
             continue
-        text = _clean(segment.text)
-        if any(marker in text for marker in ("--", "...")):
-            continue
-        # Strong signal: very short early phrase followed immediately by a restarted phrase.
         for i in range(config.min_false_start_words, min(len(words), 8)):
-            prefix = _clean(" ".join(w.text for w in words[:i]))
-            suffix = _clean(" ".join(w.text for w in words[i:]))
-            if prefix and suffix and prefix.split()[-1:] == suffix.split()[:1]:
-                findings.append(EditorialFinding(TimeRange(words[0].start, words[i-1].end), "false_start", 0.78, "Possible restarted phrase; review before cutting."))
+            prefix = [_clean(w.text) for w in words[:i]]
+            suffix = [_clean(w.text) for w in words[i:]]
+            if prefix and suffix and prefix[-1] == suffix[0]:
+                findings.append(EditorialFinding(TimeRange(words[0].start, words[i - 1].end), "false_start", 0.78, "Possible restarted phrase; review before cutting."))
                 break
     return findings
 
@@ -87,7 +80,7 @@ def pause_findings(segments: list[SpeechSegment], config: EditorialConfig = Edit
 
 
 def build_editorial_findings(segments: list[SpeechSegment], config: EditorialConfig = EditorialConfig()) -> list[EditorialFinding]:
-    findings = []
+    findings: list[EditorialFinding] = []
     findings.extend(pause_findings(segments, config))
     findings.extend(detect_fillers(segments, config))
     findings.extend(detect_false_starts(segments, config))
