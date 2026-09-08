@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from kubrick.core import MediaClip, Project
-from kubrick.editor import cut_range
+from kubrick.core import AudioClip, MediaClip, Project
+from kubrick.editor import add_audio, add_filter, cut_range
 from kubrick.media import probe_duration, render_project
 
 
@@ -69,3 +69,17 @@ def test_render_project_handles_timeline_cut(tmp_path: Path) -> None:
 
     assert output.is_file()
     assert probe_duration(output) == pytest.approx(1.6, abs=0.08)
+
+
+def test_render_project_mixes_external_audio_and_filter(tmp_path: Path) -> None:
+    source = tmp_path / "fixture.mp4"
+    output = tmp_path / "mixed.mp4"
+    _make_fixture(source)
+    project = Project(video=[MediaClip(str(source), 0, 2, 0)])
+    project = add_audio(project, AudioClip(str(source), 0, 1.5, 0, 0.35, 0.05, 0.05))
+    project = add_filter(project, "eq=contrast=1.03", 0)
+
+    render_project(project, output, crf=28, preset="ultrafast")
+
+    assert output.is_file()
+    assert probe_duration(output) == pytest.approx(2.0, abs=0.08)
