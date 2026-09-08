@@ -4,13 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from kubrick.core import get_preset
-from kubrick.editor import (
-    AnalyzerConfig,
-    analyze,
-    build_preset_project,
-    render,
-)
+from kubrick.core import PRESETS, Project
+from kubrick.editor import AnalyzerConfig, analyze, build_preset_project, render
 from kubrick.media import render_project
 
 
@@ -36,21 +31,15 @@ def _build_parser() -> argparse.ArgumentParser:
     project_parser = sub.add_parser("new-project", help="Create an editable project JSON from source footage")
     project_parser.add_argument("input", type=Path)
     project_parser.add_argument("output", type=Path)
-    project_parser.add_argument("--preset", choices=tuple(get_preset_names()), default="clean")
+    project_parser.add_argument("--preset", choices=tuple(PRESETS), default="clean")
 
     render_project_parser = sub.add_parser("render-project", help="Render an editable project JSON")
     render_project_parser.add_argument("project", type=Path)
     render_project_parser.add_argument("output", type=Path)
     render_project_parser.add_argument("--crf", type=int, default=18)
-    render_project_parser.add_argument("--preset", default="medium")
+    render_project_parser.add_argument("--encoder-preset", default="medium")
 
     return parser
-
-
-def get_preset_names() -> list[str]:
-    from kubrick.core import PRESETS
-
-    return list(PRESETS)
 
 
 def _report_json(report) -> dict:
@@ -98,7 +87,7 @@ def main() -> int:
         print(f"Project: {args.output}")
         return 0
 
-    project = __import__("kubrick.core", fromlist=["Project"]).Project.load(args.project)
-    render_project(project, args.output, crf=args.crf, preset=args.preset)
+    project = Project.load(args.project)
+    render_project(project, args.output, crf=args.crf, preset=args.encoder_preset)
     print(f"Rendered: {args.output}")
     return 0
