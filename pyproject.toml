@@ -4,24 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kubrick"
-version = "0.1.0"
-description = "Precision-first local video editing automation engine"
+version = "0.2.0"
+description = "Precision-first local video editing engine"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-  "pyside6>=6.8,<7",
-  "numpy>=2.0,<3",
-]
+dependencies = ["numpy>=2.0,<3"]
 
 [project.optional-dependencies]
-dev = [
-  "pytest>=8,<9",
-  "pytest-qt>=4,<5",
-  "ruff>=0.9,<1",
-]
+gui = ["pyside6>=6.8,<7"]
+speech = ["faster-whisper>=1.2,<2"]
+dev = ["pytest>=8,<9", "ruff>=0.9,<1"]
+all = ["pyside6>=6.8,<7", "faster-whisper>=1.2,<2", "pytest>=8,<9", "ruff>=0.9,<1"]
 
 [project.scripts]
-kubrick = "kubrick.app:main"
+kubrick = "kubrick.cli:main"
+kubrick-gui = "kubrick.ui.app:main"
 
 [tool.setuptools.packages.find]
 include = ["kubrick*"]
