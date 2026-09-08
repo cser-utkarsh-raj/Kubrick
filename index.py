@@ -12,6 +12,15 @@ ROOT = Path(__file__).resolve().parent
 class handler(BaseHTTPRequestHandler):
     """Serve Kubrick's public homepage and lightweight status API."""
 
+    def _send_file(self, path: Path, content_type: str, cache_control: str) -> None:
+        body = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", cache_control)
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
 
@@ -31,20 +40,21 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        if path == "/kubrick/ui/kubrick-mark.svg":
-            body = (ROOT / "kubrick" / "ui" / "kubrick-mark.svg").read_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", "image/svg+xml")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "public, max-age=86400, immutable")
-            self.end_headers()
-            self.wfile.write(body)
+        static_files = {
+            "/kubrick/ui/kubrick-mark.svg": ("kubrick-mark.svg", "image/svg+xml"),
+            "/kubrick/ui/dot.svg": ("dot.svg", "image/svg+xml"),
+        }
+        if path in static_files:
+            filename, content_type = static_files[path]
+            self._send_file(
+                ROOT / "kubrick" / "ui" / filename,
+                content_type,
+                "public, max-age=86400, immutable",
+            )
             return
 
-        body = (ROOT / "index.html").read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "public, max-age=300, must-revalidate")
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_file(
+            ROOT / "index.html",
+            "text/html; charset=utf-8",
+            "public, max-age=300, must-revalidate",
+        )
