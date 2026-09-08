@@ -33,6 +33,9 @@ def _build_parser() -> argparse.ArgumentParser:
     project_parser.add_argument("output", type=Path)
     project_parser.add_argument("--preset", choices=tuple(PRESETS), default="clean")
 
+    validate_parser = sub.add_parser("validate-project", help="Validate an editable project before rendering")
+    validate_parser.add_argument("project", type=Path)
+
     render_project_parser = sub.add_parser("render-project", help="Render an editable project JSON")
     render_project_parser.add_argument("project", type=Path)
     render_project_parser.add_argument("output", type=Path)
@@ -88,6 +91,13 @@ def main() -> int:
         return 0
 
     project = Project.load(args.project)
+    if args.command == "validate-project":
+        project.validate()
+        print(f"Valid project: {args.project}")
+        print(f"Timeline duration: {project.duration():.3f}s")
+        print(f"Video clips: {len(project.video)} | Audio clips: {len(project.audio)} | Overlays: {len(project.overlays)}")
+        return 0
+
     render_project(project, args.output, crf=args.crf, preset=args.encoder_preset)
     print(f"Rendered: {args.output}")
     return 0
