@@ -34,6 +34,27 @@ def test_project_round_trip(tmp_path: Path) -> None:
     assert loaded.schema_version == 1
 
 
+def test_project_load_resolves_relative_media_paths(tmp_path: Path) -> None:
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    source = media_dir / "input.mp4"
+    source.write_bytes(b"placeholder")
+    project_path = tmp_path / "edit.kubrick.json"
+    project_path.write_text(
+        json.dumps(
+            {
+                "name": "Relative",
+                "video": [{"path": "media/input.mp4", "source_start": 0, "source_end": 2}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = Project.load(project_path)
+    assert loaded.video[0].path == str(source.resolve())
+    loaded.validate()
+
+
 def test_project_save_is_atomic_and_leaves_no_temp_file(tmp_path: Path) -> None:
     path = tmp_path / "demo.kubrick.json"
     Project(video=[MediaClip("input.mp4", 0, 2)]).save(path)
@@ -44,13 +65,7 @@ def test_project_save_is_atomic_and_leaves_no_temp_file(tmp_path: Path) -> None:
 def test_unknown_future_schema_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "future.kubrick.json"
     path.write_text(
-        json.dumps(
-            {
-                "schema_version": 999,
-                "name": "future",
-                "video": [],
-            }
-        ),
+        json.dumps({"schema_version": 999, "name": "future", "video": []}),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="unsupported project schema version"):
