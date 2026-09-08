@@ -31,7 +31,7 @@ Every proposed edit is represented as an inspectable decision. Deterministic med
 
 ### Speech-aware layer
 
-Optional local `faster-whisper` integration provides word-level timing and speech segments. Its VAD can be tuned for conservative or tighter speech detection; Kubrick keeps this layer optional so the basic editor does not require a model download. citeturn0search1turn0search4
+Optional local `faster-whisper` integration provides word-level timing and speech segments. VAD is used as evidence, not as an instruction to blindly delete every detected gap.
 
 Planned speech-aware decisions include:
 
@@ -71,7 +71,7 @@ This prevents an AI model from being responsible for tasks that a deterministic 
 - **Natural** — meaningful tightening while retaining human rhythm.
 - **Tight** — faster pacing for short-form or highly edited material.
 
-The `natural` profile is the intended default for your lecture/tutorial workflow.
+The `natural` profile is the intended default for lecture/tutorial workflows.
 
 ## Local-first
 
