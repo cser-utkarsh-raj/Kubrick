@@ -184,12 +184,12 @@ class Project:
             raise ValueError("fps must be positive")
 
         expected_start = 0.0
-        for clip in self.video:
+        for index, clip in enumerate(self.video):
             if abs(clip.timeline_start - expected_start) > 1e-6:
                 raise ValueError("main video clips must form a continuous timeline starting at 0")
             end = clip.timeline_end
             if end is None:
-                if clip is not self.video[-1]:
+                if index != len(self.video) - 1:
                     raise ValueError("only the final video clip may have unknown duration")
                 break
             expected_start = end
@@ -259,5 +259,56 @@ class Project:
 
     @classmethod
     def load(cls, path: str | Path) -> Project:
-        project = cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+        """Load a project and resolve relative media paths beside the project file."""
+        project_path = Path(path).resolve()
+        project = cls.from_dict(json.loads(project_path.read_text(encoding="utf-8")))
+        base = project_path.parent
+
+        def resolve(value: str) -> str:
+            candidate = Path(value).expanduser()
+            if candidate.is_absolute():
+                return str(candidate)
+            return str((base / candidate).resolve())
+
+        project.video = [
+            MediaClip(
+                path=resolve(clip.path),
+                source_start=clip.source_start,
+                source_end=clip.source_end,
+                timeline_start=clip.timeline_start,
+                volume=clip.volume,
+                speed=clip.speed,
+                filters=clip.filters,
+            )
+            for clip in project.video
+        ]
+        project.audio = [
+            AudioClip(
+                path=resolve(clip.path),
+                source_start=clip.source_start,
+                source_end=clip.source_end,
+                timeline_start=clip.timeline_start,
+                volume=clip.volume,
+                fade_in=clip.fade_in,
+                fade_out=clip.fade_out,
+            )
+            for clip in project.audio
+        ]
+        project.overlays = [
+            Overlay(
+                kind=overlay.kind,
+                value=resolve(overlay.value) if overlay.kind == "image" else overlay.value,
+                start=overlay.start,
+                end=overlay.end,
+                x=overlay.x,
+                y=overlay.y,
+                width=overlay.width,
+                height=overlay.height,
+                font_size=overlay.font_size,
+                color=overlay.color,
+                opacity=overlay.opacity,
+                border_radius=overlay.border_radius,
+            )
+            for overlay in project.overlays
+        ]
         return project
