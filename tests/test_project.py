@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,60 @@ def test_project_round_trip(tmp_path: Path) -> None:
     project.save(path)
     loaded = Project.load(path)
     assert loaded.to_dict() == project.to_dict()
+    assert loaded.schema_version == 1
+
+
+def test_project_save_is_atomic_and_leaves_no_temp_file(tmp_path: Path) -> None:
+    path = tmp_path / "demo.kubrick.json"
+    Project(video=[MediaClip("input.mp4", 0, 2)]).save(path)
+    assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 1
+    assert list(tmp_path.glob(".*.tmp")) == []
+
+
+def test_unknown_future_schema_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "future.kubrick.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 999,
+                "name": "future",
+                "video": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="unsupported project schema version"):
+        Project.load(path)
+
+
+def test_validate_rejects_gapped_main_timeline(tmp_path: Path) -> None:
+    source = tmp_path / "input.mp4"
+    source.write_bytes(b"placeholder")
+    project = Project(
+        video=[
+            MediaClip(str(source), 0, 2, 0),
+            MediaClip(str(source), 2, 4, 3),
+        ]
+    )
+    with pytest.raises(ValueError, match="continuous timeline"):
+        project.validate()
+
+
+def test_validate_rejects_overlay_beyond_timeline(tmp_path: Path) -> None:
+    source = tmp_path / "input.mp4"
+    source.write_bytes(b"placeholder")
+    project = Project(
+        video=[MediaClip(str(source), 0, 2, 0)],
+        overlays=[Overlay("text", "Too late", 1, 3)],
+    )
+    with pytest.raises(ValueError, match="overlay extends"):
+        project.validate()
+
+
+def test_audio_duration() -> None:
+    audio = AudioClip("music.wav", 2, 7, 5)
+    assert audio.duration == 5
+    assert audio.timeline_end == 10
 
 
 def test_trim_is_non_destructive() -> None:
