@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090909">
+  <meta name="description" content="Kubrick is a precision-first local video editing engine for spoken footage.">
+  <title>Kubrick — Precision Video Editing</title>
+  <link rel="icon" href="/kubrick/ui/kubrick-mark.svg" type="image/svg+xml">
+  <style>
+    :root{--bg:#070707;--panel:#101010;--line:#252525;--text:#f3efe8;--muted:#8e8982;--soft:#b8b2aa;--red:#d42d21;--red2:#ef4638;--max:1240px}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:-.01em}
+    body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.18;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);background-size:72px 72px;mask-image:linear-gradient(to bottom,#000,transparent 72%)}
+    a{color:inherit;text-decoration:none}.wrap{width:min(var(--max),calc(100% - 48px));margin:auto}.nav{height:82px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.08)}
+    .brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.28em;font-size:15px}.mark{width:30px;height:30px;display:grid;place-items:center;border:1px solid #363636;border-radius:8px;background:#111;overflow:hidden}.mark img{width:22px;height:22px}.links{display:flex;gap:28px;color:var(--muted);font-size:13px}.links a:hover{color:#fff}.version{font-size:11px;color:#777;border:1px solid #292929;padding:7px 10px;border-radius:999px}
+    .hero{min-height:650px;display:grid;grid-template-columns:1.15fr .85fr;gap:70px;align-items:center;padding:92px 0 78px}.kicker{display:flex;align-items:center;gap:10px;color:#a49e96;font-size:11px;font-weight:700;letter-spacing:.24em}.dot{width:7px;height:7px;border-radius:50%;background:var(--red);box-shadow:0 0 18px rgba(212,45,33,.8)}h1{font-size:clamp(58px,7.2vw,102px);line-height:.92;letter-spacing:-.065em;margin:25px 0 30px;max-width:820px}h1 span{color:#77716a}.lede{max-width:650px;color:var(--soft);font-size:18px;line-height:1.65;margin:0 0 36px}.actions{display:flex;gap:12px;align-items:center}.btn{display:inline-flex;align-items:center;justify-content:center;height:48px;padding:0 20px;border-radius:9px;border:1px solid #343434;background:#151515;font-size:13px;font-weight:700}.btn.primary{background:var(--red);border-color:#e2473b;color:#fff;box-shadow:0 10px 35px rgba(212,45,33,.18)}.btn.primary:hover{background:var(--red2)}.btn:hover{background:#202020}.hero-art{position:relative;min-height:390px;border:1px solid #292929;border-radius:18px;background:radial-gradient(circle at 65% 25%,rgba(212,45,33,.15),transparent 32%),linear-gradient(145deg,#141414,#0b0b0b);overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.45)}.hero-art:after{content:"";position:absolute;inset:0;background:linear-gradient(120deg,transparent 30%,rgba(255,255,255,.025) 50%,transparent 70%);transform:translateX(-100%);animation:sheen 7s ease-in-out infinite}.screen{position:absolute;inset:34px 34px 82px;border:1px solid #333;border-radius:10px;background:#090909;overflow:hidden}.screen-top{height:30px;border-bottom:1px solid #222;display:flex;align-items:center;padding:0 11px;gap:5px}.screen-top i{width:6px;height:6px;border-radius:50%;background:#393939}.frame{position:absolute;inset:30px 0 0;background:linear-gradient(135deg,#181818 0 49%,#101010 49% 100%)}.frame:before{content:"K";position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);font-size:130px;font-weight:900;color:#1d1d1d;letter-spacing:-.1em}.wave{position:absolute;left:34px;right:34px;bottom:34px;height:30px;background:repeating-linear-gradient(90deg,#5b2824 0 2px,transparent 2px 7px);opacity:.7;clip-path:polygon(0 55%,3% 35%,5% 72%,8% 18%,10% 62%,13% 40%,16% 78%,19% 28%,22% 55%,25% 12%,28% 70%,31% 38%,34% 63%,37% 25%,40% 74%,43% 42%,46% 60%,49% 20%,52% 78%,55% 33%,58% 65%,61% 17%,64% 70%,67% 36%,70% 61%,73% 24%,76% 73%,79% 39%,82% 64%,85% 20%,88% 70%,91% 33%,94% 62%,97% 28%,100% 55%)}
+    section{padding:95px 0;border-top:1px solid rgba(255,255,255,.08)}.section-head{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:42px}.eyebrow{color:#77716a;font-size:10px;letter-spacing:.25em;font-weight:800}.section-head h2{font-size:42px;line-height:1;letter-spacing:-.04em;margin:12px 0 0}.section-head p{max-width:470px;color:var(--muted);line-height:1.6;margin:0}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{min-height:245px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(150deg,#121212,#0d0d0d);padding:26px;position:relative;overflow:hidden}.card:hover{border-color:#3b3b3b;transform:translateY(-2px);transition:.25s}.num{font-size:11px;color:#625e59;letter-spacing:.18em}.icon{font-size:22px;margin:48px 0 24px;color:#ddd}.card h3{margin:0 0 10px;font-size:19px}.card p{margin:0;color:var(--muted);line-height:1.6;font-size:13px}
+    .workflow{display:grid;grid-template-columns:1fr 1fr;gap:14px}.step{border:1px solid var(--line);border-radius:14px;padding:25px;background:#0d0d0d;display:grid;grid-template-columns:44px 1fr;gap:16px}.step b{width:36px;height:36px;border:1px solid #343434;border-radius:9px;display:grid;place-items:center;color:#aaa;font-size:12px}.step h3{margin:1px 0 8px;font-size:15px}.step p{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+    .status{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}.status-main,.status-side{border:1px solid var(--line);border-radius:14px;background:#0e0e0e;padding:28px}.status-row{display:flex;align-items:center;justify-content:space-between;padding:17px 0;border-bottom:1px solid #202020}.status-row:last-child{border-bottom:0}.status-label{color:#777;font-size:12px}.status-value{font-size:13px;font-weight:700}.online{color:#d8d4ce;display:flex;gap:8px;align-items:center}.online:before{content:"";width:7px;height:7px;border-radius:50%;background:#7cbe79;box-shadow:0 0 14px rgba(124,190,121,.6)}.quote{font-size:24px;line-height:1.35;letter-spacing:-.03em;color:#d7d2cb;margin:0 0 22px}.quote small{font-size:11px;color:#666;letter-spacing:.1em;text-transform:uppercase}
+    .footer{padding:34px 0 42px;color:#5f5b56;font-size:11px;display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,.08)}.api-note{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#777;font-size:11px}
+    @keyframes sheen{0%,55%{transform:translateX(-100%)}75%,100%{transform:translateX(100%)}}@media(max-width:850px){.links{display:none}.hero{grid-template-columns:1fr;padding:65px 0}.hero-art{min-height:330px}.grid,.workflow,.status{grid-template-columns:1fr}.section-head{display:block}.section-head p{margin-top:18px}.wrap{width:min(100% - 30px,700px)}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.hero-art:after{animation:none}.card:hover{transform:none}}
+  </style>
+</head>
+<body>
+  <header class="wrap nav">
+    <a class="brand" href="/"><span class="mark"><img src="/kubrick/ui/kubrick-mark.svg" alt=""></span>KUBRICK</a>
+    <nav class="links" aria-label="Primary"><a href="#engine">Engine</a><a href="#workflow">Workflow</a><a href="#status">Status</a><a href="/api">API</a></nav>
+    <span class="version">v0.3.0</span>
+  </header>
+
+  <main>
+    <section class="wrap hero" style="border:0">
+      <div>
+        <div class="kicker"><span class="dot"></span> PRECISION VIDEO EDITING</div>
+        <h1>Make every second <span>earn its place.</span></h1>
+        <p class="lede">Kubrick finds dead air, continuity faults and editorial friction in real footage — then builds a conservative, synchronized edit you can inspect before anything is rendered.</p>
+        <div class="actions"><a class="btn primary" href="#workflow">See how it works</a><a class="btn" href="#engine">Explore the engine</a></div>
+      </div>
+      <div class="hero-art" aria-label="Kubrick editor preview illustration"><div class="screen"><div class="screen-top"><i></i><i></i><i></i></div><div class="frame"></div></div><div class="wave"></div></div>
+    </section>
+
+    <section id="engine"><div class="wrap">
+      <div class="section-head"><div><div class="eyebrow">THE ENGINE</div><h2>Objective first.<br>Human always.</h2></div><p>Kubrick is built for spoken footage: lectures, tutorials, presentations, explainers, interviews and creator recordings. It edits what can be measured and asks you about what cannot.</p></div>
+      <div class="grid">
+        <article class="card"><div class="num">01 / SIGNAL</div><div class="icon">◒</div><h3>Evidence, not guesses</h3><p>FFmpeg and FFprobe provide measurable audio and visual evidence before editorial rules make a decision.</p></article>
+        <article class="card"><div class="num">02 / TIMELINE</div><div class="icon">⌁</div><h3>One synchronized timeline</h3><p>Audio and video share the same edit decisions, so tightening footage never silently breaks sync.</p></article>
+        <article class="card"><div class="num">03 / CONTROL</div><div class="icon">◇</div><h3>Conservative by design</h3><p>Weak footage can be tightened aggressively. Ambiguous moments become review items instead of irreversible cuts.</p></article>
+      </div>
+    </div></section>
+
+    <section id="workflow"><div class="wrap">
+      <div class="section-head"><div><div class="eyebrow">WORKFLOW</div><h2>From footage to<br>finished cut.</h2></div><p>The desktop engine stays local. The public web surface is intentionally lightweight: documentation, product context and a small health/API layer.</p></div>
+      <div class="workflow">
+        <article class="step"><b>01</b><div><h3>Inspect</h3><p>Probe the source and establish duration, streams and technical constraints.</p></div></article>
+        <article class="step"><b>02</b><div><h3>Analyze</h3><p>Detect silence, speech patterns, scene changes, blackouts and frozen frames.</p></div></article>
+        <article class="step"><b>03</b><div><h3>Decide</h3><p>Apply an editorial profile and produce explainable KEEP, COMPRESS, CUT and REVIEW decisions.</p></div></article>
+        <article class="step"><b>04</b><div><h3>Render</h3><p>Build one unified keep timeline and render the synchronized result through FFmpeg.</p></div></article>
+      </div>
+    </div></section>
+
+    <section id="status"><div class="wrap">
+      <div class="section-head"><div><div class="eyebrow">SYSTEM STATUS</div><h2>Quietly doing the work.</h2></div><p id="status-copy">Checking the Kubrick API endpoint…</p></div>
+      <div class="status">
+        <div class="status-main">
+          <div class="status-row"><span class="status-label">ENGINE</span><span class="status-value">Local-first desktop</span></div>
+          <div class="status-row"><span class="status-label">API</span><span class="status-value online" id="api-status">Checking</span></div>
+          <div class="status-row"><span class="status-label">VERSION</span><span class="status-value" id="version">0.3.0</span></div>
+          <div class="status-row"><span class="status-label">PROCESSING</span><span class="status-value">On-device</span></div>
+        </div>
+        <aside class="status-side"><p class="quote">“The goal isn't to make footage feel edited. It's to make the edit disappear.”</p><small>— KUBRICK EDITORIAL PRINCIPLE</small></aside>
+      </div>
+    </div></section>
+  </main>
+
+  <footer class="wrap footer"><span>© 2026 KUBRICK</span><span class="api-note">/api · health endpoint</span></footer>
+  <script>
+    fetch('/api',{headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():Promise.reject()).then(data=>{document.getElementById('api-status').textContent='Operational';document.getElementById('status-copy').textContent='API is online. Heavy media processing remains local by design.';if(data.version)document.getElementById('version').textContent=data.version}).catch(()=>{document.getElementById('api-status').textContent='Unavailable';document.getElementById('status-copy').textContent='The public API is not responding right now.';document.getElementById('api-status').classList.remove('online')});
+  </script>
+</body>
+</html>
