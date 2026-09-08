@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPointF, QRect, Qt, Signal
 from PySide6.QtGui import QBrush, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
@@ -33,7 +33,6 @@ class TimelineWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setMinimumHeight(190)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.project: Project | None = None
@@ -43,10 +42,18 @@ class TimelineWidget(QWidget):
         self._drag_origin_x = 0.0
         self._drag_start = 0.0
         self._drag_changed = False
+        self._resize_to_content()
+
+    def _resize_to_content(self) -> None:
+        duration = self._duration()
+        rows = max(1, len(self._tracks()))
+        self.setMinimumSize(int(self.LEFT + duration * self.zoom + 120), self.RULER + rows * self.ROW + 4)
+        self.resize(max(self.width(), self.minimumWidth()), self.minimumHeight())
 
     def set_project(self, project: Project | None) -> None:
         self.project = project
         self._drag = None
+        self._resize_to_content()
         self.update()
 
     def set_position(self, position: float) -> None:
@@ -132,9 +139,9 @@ class TimelineWidget(QWidget):
             painter.drawText(10, y + 26, track)
             left = self._x_for_time(start)
             right = max(left + 4, self._x_for_time(end))
-            rect = self.rect().adjusted(0, 0, 0, 0)
-            block = rect.__class__(int(left), int(y + 7), int(right - left), self.ROW - 14)
-            painter.setBrush(QBrush("#261513" if self._drag and self._drag.index == index and self._drag.track == track.lower() else "#171717"))
+            block = QRect(int(left), int(y + 7), int(right - left), self.ROW - 14)
+            selected = self._drag and self._drag.index == index and self._drag.track == track.lower()
+            painter.setBrush(QBrush("#261513" if selected else "#171717"))
             painter.setPen(QPen("#6f2d27"))
             painter.drawRoundedRect(block, 6, 6)
             painter.setPen(QPen("#d8d2ca"))
@@ -171,7 +178,8 @@ class TimelineWidget(QWidget):
         new_start = min(new_start, max(0.0, max_start))
         if abs(new_start - self._drag_start) > 0.01:
             self._drag_changed = True
-            self._drag = _Hit(self._drag.track, self._drag.index, new_start, new_start + (self._drag.end - self._drag.start))
+            duration = self._drag.end - self._drag.start
+            self._drag = _Hit(self._drag.track, self._drag.index, new_start, new_start + duration)
             self.update()
 
     def mouseReleaseEvent(self, event) -> None:  # pragma: no cover - Qt interaction
@@ -189,6 +197,7 @@ class TimelineWidget(QWidget):
             return
         factor = 1.12 if event.angleDelta().y() > 0 else 1 / 1.12
         self.zoom = min(self.MAX_ZOOM, max(self.MIN_ZOOM, self.zoom * factor))
+        self._resize_to_content()
         self.update()
         event.accept()
 
