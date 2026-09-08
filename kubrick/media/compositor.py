@@ -29,12 +29,7 @@ def render_project(
     preset: str = "medium",
     audio_bitrate: str = "192k",
 ) -> None:
-    """Render a small, practical multi-layer project through one FFmpeg graph.
-
-    The model deliberately stays simple: a sequential main video track,
-    optional audio clips, and timed text/image/shape overlays. Nothing mutates
-    the source files.
-    """
+    """Render a small, practical multi-layer project through one FFmpeg graph."""
     project.validate()
     if not 0 <= crf <= 51:
         raise ValueError("crf must be 0..51")
@@ -44,12 +39,12 @@ def render_project(
     video = sorted(project.video, key=lambda c: c.timeline_start)
     if any(c.duration is None for c in video):
         raise ValueError("Project video clips must have explicit source_end values")
-    if abs(video[0].timeline_start) > 1e-6 or any(
-        abs(clip.timeline_start - sum(_duration(previous) for previous in video[:index])) > 1e-4
-        for index, clip in enumerate(video)
-    ):
-        raise ValueError("main video clips must be sequential; use merge_clips() to normalize them")
-    total_duration = sum(_duration(clip) for clip in video)
+    expected = 0.0
+    for clip in video:
+        if abs(clip.timeline_start - expected) > 1e-4:
+            raise ValueError("main video clips must be sequential; use merge_clips() to normalize them")
+        expected += _duration(clip)
+    total_duration = expected
 
     inputs: list[str] = ["ffmpeg", "-hide_banner", "-y"]
     for clip in video:
@@ -58,10 +53,12 @@ def render_project(
         inputs += ["-i", str(clip.path)]
 
     image_inputs: dict[int, int] = {}
+    next_input = len(video) + len(project.audio)
     for overlay_index, overlay in enumerate(project.overlays):
         if overlay.kind == "image":
-            image_inputs[overlay_index] = len(video) + len(project.audio) + len(image_inputs)
+            image_inputs[overlay_index] = next_input
             inputs += ["-loop", "1", "-i", overlay.value]
+            next_input += 1
 
     filters: list[str] = []
     video_labels: list[str] = []
@@ -96,7 +93,7 @@ def render_project(
         filters.append(f"{''.join(video_labels)}concat=n={len(video_labels)}:v=1:a=0[basev]")
         current_video = "[basev]"
 
-    for overlay_index, overlay in enumerate(sorted(project.overlays, key=lambda item: item.start)):
+    for overlay_index, overlay in sorted(enumerate(project.overlays), key=lambda item: item[1].start):
         end = min(overlay.end if overlay.end is not None else total_duration, total_duration)
         if end <= overlay.start:
             continue
@@ -135,7 +132,7 @@ def render_project(
     for offset, clip in enumerate(project.audio):
         input_index = len(video) + offset
         source_end = clip.source_end if clip.source_end is not None else probe_duration(clip.path)
-        duration = source_end - clip.source_start
+        duration = max(0.0, source_end - clip.source_start)
         chain = (
             f"[{input_index}:a]atrim=start={clip.source_start:.6f}:end={source_end:.6f},"
             f"asetpts=PTS-STARTPTS,volume={clip.volume:.4f}"
