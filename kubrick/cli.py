@@ -4,7 +4,14 @@ import argparse
 import json
 from pathlib import Path
 
-from kubrick.editor import AnalyzerConfig, analyze, render
+from kubrick.core import get_preset
+from kubrick.editor import (
+    AnalyzerConfig,
+    analyze,
+    build_preset_project,
+    render,
+)
+from kubrick.media import render_project
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -14,18 +21,36 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    analyze_parser = sub.add_parser("analyze", help="Analyze pauses and produce an edit report")
+    analyze_parser = sub.add_parser("analyze", help="Analyze footage and produce an edit report")
     analyze_parser.add_argument("input", type=Path)
     analyze_parser.add_argument("--profile", choices=("gentle", "natural", "tight"), default="natural")
     analyze_parser.add_argument("--noise-db", type=float, default=-38.0)
     analyze_parser.add_argument("--json", dest="json_path", type=Path)
 
-    render_parser = sub.add_parser("render", help="Analyze and render a tightened copy")
+    render_parser = sub.add_parser("render", help="Automatically tighten footage and render an MP4")
     render_parser.add_argument("input", type=Path)
     render_parser.add_argument("output", type=Path)
     render_parser.add_argument("--profile", choices=("gentle", "natural", "tight"), default="natural")
     render_parser.add_argument("--noise-db", type=float, default=-38.0)
+
+    project_parser = sub.add_parser("new-project", help="Create an editable project JSON from source footage")
+    project_parser.add_argument("input", type=Path)
+    project_parser.add_argument("output", type=Path)
+    project_parser.add_argument("--preset", choices=tuple(get_preset_names()), default="clean")
+
+    render_project_parser = sub.add_parser("render-project", help="Render an editable project JSON")
+    render_project_parser.add_argument("project", type=Path)
+    render_project_parser.add_argument("output", type=Path)
+    render_project_parser.add_argument("--crf", type=int, default=18)
+    render_project_parser.add_argument("--preset", default="medium")
+
     return parser
+
+
+def get_preset_names() -> list[str]:
+    from kubrick.core import PRESETS
+
+    return list(PRESETS)
 
 
 def _report_json(report) -> dict:
@@ -51,10 +76,9 @@ def _report_json(report) -> dict:
 
 def main() -> int:
     args = _build_parser().parse_args()
-    config = AnalyzerConfig(args.profile, args.noise_db)
 
     if args.command == "analyze":
-        report = analyze(args.input, config)
+        report = analyze(args.input, AnalyzerConfig(args.profile, args.noise_db))
         text = json.dumps(_report_json(report), indent=2)
         if args.json_path:
             args.json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -63,6 +87,18 @@ def main() -> int:
             print(text)
         return 0
 
-    render(args.input, args.output, config)
+    if args.command == "render":
+        render(args.input, args.output, AnalyzerConfig(args.profile, args.noise_db))
+        print(f"Rendered: {args.output}")
+        return 0
+
+    if args.command == "new-project":
+        project = build_preset_project(args.input, args.preset)
+        project.save(args.output)
+        print(f"Project: {args.output}")
+        return 0
+
+    project = __import__("kubrick.core", fromlist=["Project"]).Project.load(args.project)
+    render_project(project, args.output, crf=args.crf, preset=args.preset)
     print(f"Rendered: {args.output}")
     return 0
