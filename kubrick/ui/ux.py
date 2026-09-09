@@ -21,7 +21,7 @@ FILTERS = {
 
 
 class FilterCombo(QComboBox):
-    """Named filter selector that still exposes the legacy text() contract."""
+    """Named filter selector that still exposes the editor's text() contract."""
 
     def text(self) -> str:
         return FILTERS[self.currentText()]
@@ -31,18 +31,8 @@ def install(window) -> None:
     """Upgrade the current editor UI without duplicating the main window."""
     for button in window.findChildren(QPushButton):
         text = button.text().strip()
-        if text == "Project":
-            button.clicked.connect(lambda: _nav(window, "Project"))
-        elif text == "Edit":
-            button.clicked.connect(lambda: _nav(window, "Edit"))
-        elif text == "Auto Edit":
-            button.clicked.connect(lambda: _nav(window, "Auto Edit"))
-        elif text == "Scenes":
-            button.clicked.connect(lambda: _nav(window, "Scenes"))
-        elif text == "Transcript":
-            button.clicked.connect(lambda: _nav(window, "Transcript"))
-        elif text == "Audio":
-            button.clicked.connect(lambda: _nav(window, "Audio"))
+        if text in {"Project", "Edit", "Auto Edit", "Scenes", "Transcript", "Audio"}:
+            button.clicked.connect(lambda _checked=False, name=text: _nav(window, name))
 
     if hasattr(window, "preset"):
         window.preset.setToolTip("Auto Edit style. Select one, then press Auto Edit.")
@@ -71,13 +61,19 @@ def install(window) -> None:
 
     _install_project_preview(window)
 
-    if not hasattr(window, "_ux_busy_bar"):
-        bar = QProgressBar(window)
-        bar.setRange(0, 0)
-        bar.setFixedHeight(4)
-        bar.hide()
-        window._ux_busy_bar = bar
-        window.statusBar().addPermanentWidget(bar, 1)
+    bar = QProgressBar(window)
+    bar.setRange(0, 0)
+    bar.setFixedHeight(4)
+    bar.hide()
+    window._ux_busy_bar = bar
+    window.statusBar().addPermanentWidget(bar, 1)
+    original_set_busy = window._set_busy
+
+    def set_busy(busy: bool, message: str = ""):
+        original_set_busy(busy, message)
+        bar.setVisible(busy)
+
+    window._set_busy = set_busy
 
 
 def _nav(window, name: str) -> None:
@@ -110,6 +106,7 @@ def _preset_status(window, name: str) -> None:
     preset = PRESETS.get(name)
     if preset:
         window.preset.setStatusTip(preset.description)
+        window.preset.setToolTip(preset.description)
         window.statusBar().showMessage(f"{name}: {preset.description}", 3500)
 
 
@@ -123,6 +120,7 @@ def _filter_status(window, name: str) -> None:
         "Sharpen": "Mild edge sharpening.",
     }
     window.filter.setStatusTip(descriptions.get(name, ""))
+    window.filter.setToolTip(descriptions.get(name, ""))
 
 
 def _install_project_preview(window) -> None:
@@ -274,7 +272,3 @@ def _install_project_preview(window) -> None:
 
     window._auto_done = auto_done
     refresh()
-
-
-def _fmt(window, seconds: float) -> str:
-    return window._format_ms(int(seconds * 1000))
