@@ -8,7 +8,7 @@ from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtWidgets import QComboBox, QPushButton, QProgressBar
 
 from kubrick.core import PRESETS
-from kubrick.editor import build_preset_project, project_duration
+from kubrick.editor import project_duration
 
 FILTERS = {
     "None": "",
@@ -252,7 +252,8 @@ def _install_project_preview(window) -> None:
     window._refresh = refresh
 
     def auto_done(project, original):
-        window._set_busy(False) if hasattr(window, "_set_busy") else None
+        if hasattr(window, "_set_busy"):
+            window._set_busy(False)
         window._set_project(project)
         edited = project_duration(project)
         removed = max(0.0, original - edited)
