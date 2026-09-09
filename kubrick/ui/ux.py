@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtMultimedia import QMediaPlayer
-from PySide6.QtWidgets import QComboBox, QFrame, QPushButton, QProgressBar, QScrollArea, QSplitter
+from PySide6.QtWidgets import QComboBox, QFrame, QPushButton, QProgressBar, QSplitter
 
 from kubrick.core import PRESETS
 from kubrick.editor import project_duration
@@ -29,12 +29,11 @@ class FilterCombo(QComboBox):
 
 
 def install(window) -> None:
-    """Install the editor UX once all base widgets have been constructed."""
+    """Install editor UX once all base widgets have been constructed."""
     if getattr(window, "_kubrick_ux_installed", False):
         return
-
     _wire_navigation(window)
-    _fix_inspector(window)
+    _configure_inspector(window)
     _configure_splitters(window)
     _configure_preset(window)
     _replace_filter(window)
@@ -53,52 +52,48 @@ def _wire_navigation(window) -> None:
             button.clicked.connect(lambda _checked=False, target=name: _nav(window, target))
 
 
-def _fix_inspector(window) -> None:
+def _configure_inspector(window) -> None:
+    """Keep the Inspector visible; never reparent it through a late scroll wrapper.
+
+    The previous implementation replaced the splitter child after construction.
+    Qt could then give the replacement a zero-width size hint on Windows. The
+    Inspector is now a normal splitter pane and its controls are compact enough
+    to remain usable at the application's minimum height.
+    """
     panel = window.findChild(QFrame, "panel")
-    if panel is None or getattr(window, "_ux_inspector_scroll", None) is not None:
+    if panel is None:
         return
-    splitter = panel.parentWidget()
-    if not isinstance(splitter, QSplitter):
-        return
-    index = splitter.indexOf(panel)
-    if index < 0:
-        return
-    panel.setMinimumWidth(292)
+    panel.setMinimumWidth(300)
+    panel.setMaximumWidth(390)
     layout = panel.layout()
     if layout is not None:
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(6)
-    scroll = QScrollArea()
-    scroll.setObjectName("inspectorScroll")
-    scroll.setWidgetResizable(True)
-    scroll.setFrameShape(QFrame.Shape.NoFrame)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    scroll.setWidget(panel)
-    splitter.replaceWidget(index, scroll)
-    splitter.setCollapsible(index, False)
-    splitter.setStretchFactor(index, 0)
-    window._ux_inspector_scroll = scroll
+        layout.setSpacing(5)
+    window._ux_inspector = panel
 
 
 def _configure_splitters(window) -> None:
     for splitter in window.findChildren(QSplitter):
         splitter.setOpaqueResize(True)
         splitter.setChildrenCollapsible(False)
-        splitter.setHandleWidth(8)
+        splitter.setHandleWidth(10)
+        splitter.setStyleSheet(
+            "QSplitter::handle { background:#242424; }"
+            "QSplitter::handle:hover { background:#d52b1e; }"
+        )
         if splitter.orientation() == Qt.Orientation.Vertical and splitter.count() == 2:
             splitter.setCollapsible(0, False)
             splitter.setCollapsible(1, False)
             splitter.setStretchFactor(0, 3)
             splitter.setStretchFactor(1, 1)
-            splitter.setSizes([560, 260])
-            splitter.setMinimumHeight(220)
+            splitter.setSizes([560, 270])
             window._ux_main_splitter = splitter
         elif splitter.orientation() == Qt.Orientation.Horizontal and splitter.count() == 2:
             splitter.setCollapsible(0, False)
             splitter.setCollapsible(1, False)
             splitter.setStretchFactor(0, 3)
-            splitter.setStretchFactor(1, 1)
-            splitter.setSizes([900, 320])
+            splitter.setStretchFactor(1, 0)
+            splitter.setSizes([900, 330])
 
 
 def _configure_preset(window) -> None:
@@ -132,7 +127,8 @@ def _replace_filter(window) -> None:
 def _configure_timeline(window) -> None:
     if hasattr(window, "timeline"):
         window.timeline.setToolTip(
-            "Click a clip to select it. Drag audio/layers. Ctrl+wheel zooms. Drag the splitter handle to resize the timeline."
+            "Click a clip to select it. Drag audio/layers. Ctrl+wheel zooms. "
+            "Drag the thick splitter handle to resize the timeline."
         )
 
 
@@ -162,7 +158,6 @@ def _install_busy_ui(window) -> None:
 
 
 def _install_auto_edit_guard(window) -> None:
-    """Show busy state for Auto Edit and restore it on both success and failure."""
     button = getattr(window, "auto", None)
     bar = getattr(window, "_ux_busy_bar", None)
     original = getattr(window, "_auto_edit", None)
@@ -194,7 +189,7 @@ def _nav(window, name: str) -> None:
 
     if name == "Project":
         window.video.setFocus()
-        window.status.setText("Project · preview and source")
+        window.status.setText("Project · source and preview")
     elif name == "Edit":
         _ensure_video_selection(window)
         window.trim_start.setFocus()
@@ -204,9 +199,9 @@ def _nav(window, name: str) -> None:
         window.status.setText(f"Auto Edit · {window.preset.currentText()} · press Auto Edit to run")
     elif name == "Scenes":
         window.timeline.setFocus()
-        window.status.setText("Scenes · editable segments are shown on the video track")
+        window.status.setText("Scenes · automatic segments are editable on VIDEO")
     elif name == "Transcript":
-        window.status.setText("Transcript · speech analysis is available from the speech extra")
+        window.status.setText("Transcript · speech analysis is optional and local")
     elif name == "Audio":
         window.status.setText("Audio · add music or voice layers from the Inspector")
 
@@ -272,8 +267,7 @@ def _install_project_preview(window) -> None:
         for i, clip in enumerate(window.project.video):
             end = clip.timeline_end or clip.timeline_start
             if clip.timeline_start <= position < end or (
-                i == len(window.project.video) - 1
-                and math.isclose(position, end, abs_tol=0.03)
+                i == len(window.project.video) - 1 and math.isclose(position, end, abs_tol=0.03)
             ):
                 return i
         return None
@@ -288,8 +282,8 @@ def _install_project_preview(window) -> None:
         window._ux_wanted_position = project_position
         window._ux_autoplay = autoplay
         window._ux_loading = True
+        window.player.stop()
         window.player.setSource(QUrl.fromLocalFile(str(Path(clip.path).resolve())))
-        window.player.setPosition(int(source * 1000))
 
     def seek_project(position: float, autoplay: bool = False):
         if not window.project or not window.project.video:
@@ -303,16 +297,18 @@ def _install_project_preview(window) -> None:
         local = max(0.0, target - clip.timeline_start)
         source = clip.source_start + local * clip.speed
         window._ux_project_position = target
+        window._ux_autoplay = autoplay
 
-        if (
-            index != window._ux_preview_index
-            or window.player.source().toLocalFile() != str(Path(clip.path).resolve())
-        ):
+        current_path = window.player.source().toLocalFile()
+        target_path = str(Path(clip.path).resolve())
+        if index != window._ux_preview_index or current_path != target_path:
             load_clip(index, target, autoplay)
         else:
             window.player.setPosition(int(source * 1000))
             if autoplay:
                 window.player.play()
+            else:
+                window.player.pause()
 
         window.timeline.set_position(target)
         window.seek.blockSignals(True)
@@ -321,27 +317,24 @@ def _install_project_preview(window) -> None:
         window.time.setText(f"{fmt(target)} / {fmt(duration)}")
 
     def position_changed(ms: int):
-        if (
-            not window.project
-            or window._ux_preview_index < 0
-            or window._ux_preview_index >= len(window.project.video)
-        ):
+        if not window.project or not window.project.video:
             return
-
-        clip = window.project.video[window._ux_preview_index]
-        source = ms / 1000
-        project_pos = clip.timeline_start + max(0.0, source - clip.source_start) / clip.speed
+        index = window._ux_preview_index
+        if not 0 <= index < len(window.project.video):
+            return
+        clip = window.project.video[index]
+        source = ms / 1000.0
         end = clip.timeline_end or clip.timeline_start
+        project_pos = clip.timeline_start + max(0.0, source - clip.source_start) / clip.speed
 
-        if (
-            clip.source_end is not None
-            and source >= clip.source_end - 0.04
-            and project_pos < end - 0.01
-        ):
-            nxt = window._ux_preview_index + 1
+        if clip.source_end is not None and source >= clip.source_end - 0.06:
+            nxt = index + 1
             if nxt < len(window.project.video):
                 load_clip(nxt, window.project.video[nxt].timeline_start, True)
                 return
+            window.player.pause()
+            window._ux_autoplay = False
+            project_pos = end
 
         window._ux_project_position = min(project_duration(window.project), project_pos)
         window.timeline.set_position(window._ux_project_position)
@@ -361,6 +354,11 @@ def _install_project_preview(window) -> None:
             window.player.setPosition(int(source * 1000))
             if window._ux_autoplay:
                 window.player.play()
+            else:
+                window.player.pause()
+        elif status == QMediaPlayer.MediaStatus.InvalidMedia:
+            window._ux_loading = False
+            window.status.setText("Preview could not decode this clip")
 
     window._ux_seek_project = seek_project
     window._ux_find_clip = find_clip
@@ -376,19 +374,21 @@ def _install_project_preview(window) -> None:
         window.seek.sliderMoved.disconnect(window._seek)
     except (RuntimeError, TypeError):
         pass
-    window.seek.sliderMoved.connect(lambda value: seek_project(value / 1000, False))
+    window.seek.sliderMoved.connect(lambda value: seek_project(value / 1000.0, False))
 
     def toggle():
         if not window.project or not window.project.video:
             return
         if window.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             window.player.pause()
+            window._ux_autoplay = False
             window.play.setText("▶")
+            return
+        if window._ux_project_position >= project_duration(window.project) - 0.02:
+            seek_project(0.0, True)
         else:
-            if window._ux_project_position >= project_duration(window.project) - 0.02:
-                seek_project(0, False)
-            window.player.play()
-            window.play.setText("Ⅱ")
+            seek_project(window._ux_project_position, True)
+        window.play.setText("Ⅱ")
 
     try:
         window.play.clicked.disconnect(window._toggle_play)
@@ -418,7 +418,8 @@ def _install_project_preview(window) -> None:
         else:
             window.selected_track = None
             window.selected_index = None
-            window.timeline.set_selection(None, None)
+            if hasattr(window.timeline, "set_selection"):
+                window.timeline.set_selection(None, None)
         duration = project_duration(window.project) if window.project and window.project.video else 0.0
         window.seek.setRange(0, int(duration * 1000))
         window._ux_project_position = min(window._ux_project_position, duration)
@@ -449,10 +450,8 @@ def _install_project_preview(window) -> None:
             f"Removed {fmt(removed)} · {len(project.video)} editable segments\n\n"
             "Preview follows the edited timeline. Render to create the final MP4."
         )
-        window.status.setText(
-            f"Auto Edit ready · {len(project.video)} segments · {fmt(edited)}"
-        )
-        seek_project(0, False)
+        window.status.setText(f"Auto Edit ready · {len(project.video)} segments · {fmt(edited)}")
+        seek_project(0.0, False)
 
     window._auto_done = auto_done
     refresh()
