@@ -19,7 +19,7 @@ class _Hit:
 
 
 class TimelineWidget(QWidget):
-    """Compact multi-track timeline with click-to-seek and draggable layers."""
+    """Compact multi-track timeline: many clips live on shared track rows."""
 
     clip_selected = Signal(str, int)
     position_selected = Signal(float)
@@ -27,9 +27,10 @@ class TimelineWidget(QWidget):
 
     LEFT = 82
     RULER = 26
-    ROW = 44
+    ROW = 48
     MIN_ZOOM = 24.0
     MAX_ZOOM = 180.0
+    TRACK_ORDER = ("video", "audio", "text", "image", "shape")
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -46,7 +47,7 @@ class TimelineWidget(QWidget):
 
     def _resize_to_content(self) -> None:
         duration = self._duration()
-        rows = max(1, len(self._tracks()))
+        rows = max(1, len(self._rows()))
         width = int(self.LEFT + duration * self.zoom + 120)
         height = self.RULER + rows * self.ROW + 4
         self.setMinimumSize(width, height)
@@ -76,32 +77,48 @@ class TimelineWidget(QWidget):
     def _time_for_x(self, x: float) -> float:
         return max(0.0, (x - self.LEFT) / self.zoom)
 
-    def _tracks(self) -> list[tuple[str, int, float, float, str]]:
+    def _rows(self) -> list[str]:
         if not self.project:
             return []
-        tracks: list[tuple[str, int, float, float, str]] = []
-        for index, clip in enumerate(self.project.video):
-            end = clip.timeline_end
-            if end is not None:
-                tracks.append(("VIDEO", index, clip.timeline_start, end, clip.path))
-        for index, clip in enumerate(self.project.audio):
-            end = clip.timeline_end
-            if end is not None:
-                tracks.append(("AUDIO", index, clip.timeline_start, end, clip.path))
-        for index, overlay in enumerate(self.project.overlays):
-            end = overlay.end if overlay.end is not None else self._duration()
-            tracks.append((overlay.kind.upper(), index, overlay.start, end, overlay.value))
-        return tracks
+        rows = []
+        if self.project.video:
+            rows.append("video")
+        if self.project.audio:
+            rows.append("audio")
+        for kind in ("text", "image", "shape"):
+            if any(item.kind == kind for item in self.project.overlays):
+                rows.append(kind)
+        return rows
+
+    def _items(self, track: str) -> list[tuple[int, float, float, str]]:
+        if not self.project:
+            return []
+        if track == "video":
+            return [
+                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path)
+                for i, clip in enumerate(self.project.video)
+            ]
+        if track == "audio":
+            return [
+                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path)
+                for i, clip in enumerate(self.project.audio)
+            ]
+        return [
+            (i, overlay.start, overlay.end if overlay.end is not None else self._duration(), overlay.value)
+            for i, overlay in enumerate(self.project.overlays)
+            if overlay.kind == track
+        ]
 
     def _hit(self, x: float, y: float) -> _Hit | None:
         row = int((y - self.RULER) // self.ROW)
-        tracks = self._tracks()
-        if row < 0 or row >= len(tracks):
+        rows = self._rows()
+        if row < 0 or row >= len(rows):
             return None
-        track, index, start, end, _ = tracks[row]
+        track = rows[row]
         time = self._time_for_x(x)
-        if start <= time <= end:
-            return _Hit(track.lower(), index, start, end)
+        for index, start, end, _label in reversed(self._items(track)):
+            if start <= time <= end:
+                return _Hit(track, index, start, end)
         return None
 
     def _seek_from_x(self, x: float) -> None:
@@ -115,18 +132,12 @@ class TimelineWidget(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), QBrush(QColor("#090909")))
         duration = self._duration()
-        tracks = self._tracks()
+        rows = self._rows()
 
         painter.setPen(QPen(QColor("#343434")))
         painter.drawLine(self.LEFT, 0, self.LEFT, self.height())
         painter.setFont(QFont("Segoe UI", 8))
-        tick = 1.0
-        if duration > 120:
-            tick = 10.0
-        elif duration > 60:
-            tick = 5.0
-        elif duration > 30:
-            tick = 2.0
+        tick = 1.0 if duration <= 30 else 2.0 if duration <= 60 else 5.0 if duration <= 120 else 10.0
         value = 0.0
         while value <= duration + 0.01:
             x = self._x_for_time(value)
@@ -136,22 +147,23 @@ class TimelineWidget(QWidget):
             painter.drawText(int(x + 3), 17, self._format_time(value))
             value += tick
 
-        for row, (track, index, start, end, label) in enumerate(tracks):
+        for row, track in enumerate(rows):
             y = self.RULER + row * self.ROW
             painter.setPen(QPen(QColor("#222222")))
             painter.drawLine(0, y + self.ROW - 1, self.width(), y + self.ROW - 1)
             painter.setPen(QPen(QColor("#aaa59d")))
-            painter.drawText(10, y + 26, track)
-            left = self._x_for_time(start)
-            right = max(left + 4, self._x_for_time(end))
-            block = QRect(int(left), int(y + 7), int(right - left), self.ROW - 14)
-            selected = self._drag and self._drag.index == index and self._drag.track == track.lower()
-            painter.setBrush(QBrush(QColor("#261513" if selected else "#171717")))
-            painter.setPen(QPen(QColor("#6f2d27")))
-            painter.drawRoundedRect(block, 6, 6)
-            painter.setPen(QPen(QColor("#d8d2ca")))
-            text = label.rsplit("/", 1)[-1]
-            painter.drawText(block.adjusted(9, 0, -9, 0), Qt.AlignmentFlag.AlignVCenter, text)
+            painter.drawText(10, y + 28, track.upper())
+            for index, start, end, label in self._items(track):
+                left = self._x_for_time(start)
+                right = max(left + 5, self._x_for_time(end))
+                block = QRect(int(left), int(y + 7), int(right - left), self.ROW - 14)
+                selected = self._drag and self._drag.track == track and self._drag.index == index
+                painter.setBrush(QBrush(QColor("#3a1714" if selected else "#191919")))
+                painter.setPen(QPen(QColor("#8d332b" if selected else "#4c2926")))
+                painter.drawRoundedRect(block, 6, 6)
+                painter.setPen(QPen(QColor("#ddd7cf")))
+                text = label.rsplit("/", 1)[-1]
+                painter.drawText(block.adjusted(8, 0, -8, 0), Qt.AlignmentFlag.AlignVCenter, text)
 
         playhead_x = self._x_for_time(min(duration, self.position))
         painter.setPen(QPen(QColor("#d52b1e"), 2))
@@ -166,7 +178,7 @@ class TimelineWidget(QWidget):
         hit = self._hit(point.x(), point.y())
         if hit:
             self.clip_selected.emit(hit.track, hit.index)
-            if hit.track in {"audio", "text", "image", "shape"}:
+            if hit.track != "video":
                 self._drag = hit
                 self._drag_origin_x = point.x()
                 self._drag_start = hit.start
