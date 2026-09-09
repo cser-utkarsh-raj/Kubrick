@@ -20,6 +20,13 @@ FILTERS = {
 }
 
 
+class FilterCombo(QComboBox):
+    """Named filter selector that still exposes the legacy text() contract."""
+
+    def text(self) -> str:
+        return FILTERS[self.currentText()]
+
+
 def install(window) -> None:
     """Upgrade the current editor UI without duplicating the main window."""
     for button in window.findChildren(QPushButton):
@@ -45,7 +52,7 @@ def install(window) -> None:
     old = getattr(window, "filter", None)
     if old is not None:
         parent = old.parentWidget()
-        combo = QComboBox(parent)
+        combo = FilterCombo(parent)
         combo.addItems(FILTERS)
         combo.setToolTip("Choose a visual effect for the selected video clip.")
         layout = parent.layout()
