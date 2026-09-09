@@ -108,12 +108,12 @@ class TimelineWidget(QWidget):
             return []
         if track == "video":
             return [
-                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, "")
+                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path)
                 for i, clip in enumerate(self.project.video)
             ]
         if track == "audio":
             return [
-                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, "")
+                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path)
                 for i, clip in enumerate(self.project.audio)
             ]
         return [
@@ -169,7 +169,7 @@ class TimelineWidget(QWidget):
             painter.drawLine(0, y + self.ROW - 1, self.width(), y + self.ROW - 1)
             painter.setPen(QPen(QColor("#aaa59d")))
             painter.drawText(10, y + 28, track.upper())
-            for index, start, end, _label in self._items(track):
+            for index, start, end, label in self._items(track):
                 left = self._x_for_time(start)
                 right = max(left + 7, self._x_for_time(end))
                 block = QRect(int(left), int(y + 7), int(right - left), self.ROW - 14)
@@ -185,8 +185,13 @@ class TimelineWidget(QWidget):
                 painter.setPen(QPen(QColor(border)))
                 painter.drawRoundedRect(block, 6, 6)
                 painter.setPen(QPen(QColor("#ddd7cf")))
-                label = f"SEG {index + 1:03d} · {self._format_time(end - start)}" if track == "video" else track.upper()
-                painter.drawText(block.adjusted(7, 0, -7, 0), Qt.AlignmentFlag.AlignVCenter, label)
+                if track == "video":
+                    text = f"SEG {index + 1:03d} · {self._format_time(end - start)}"
+                elif track == "audio":
+                    text = f"AUDIO {index + 1:02d}"
+                else:
+                    text = track.upper()
+                painter.drawText(block.adjusted(7, 0, -7, 0), Qt.AlignmentFlag.AlignVCenter, text)
         playhead_x = self._x_for_time(min(duration, self.position))
         painter.setPen(QPen(QColor("#d52b1e"), 2))
         painter.drawLine(QPointF(playhead_x, 0), QPointF(playhead_x, self.height()))
