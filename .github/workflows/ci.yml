@@ -29,6 +29,6 @@ jobs:
       - name: Compile package
         run: python -m compileall -q kubrick
       - name: Smoke-test desktop UI
-        run: python -c "from PySide6.QtWidgets import QApplication; from kubrick.ui.app import MainWindow; app = QApplication([]); window = MainWindow(); print('Kubrick desktop UI smoke test OK'); window.close(); app.quit()"
+        run: python -c "from PySide6.QtWidgets import QApplication; from kubrick.ui.app import MainWindow; app = QApplication([]); window = MainWindow(); app.processEvents(); assert getattr(window, '_kubrick_ux_installed', False); print('Kubrick desktop UI smoke test OK'); window.close(); app.quit()"
       - name: Lint
         run: ruff check .
