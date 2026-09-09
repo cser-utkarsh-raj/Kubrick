@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, QTimer, Qt, Signal
+from PySide6.QtCore import QPointF, QRect, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
@@ -45,19 +45,6 @@ class TimelineWidget(QWidget):
         self._drag_start = 0.0
         self._drag_changed = False
         self._resize_to_content()
-        QTimer.singleShot(0, self._install_editor_ux)
-
-    def _install_editor_ux(self) -> None:
-        window = self.window()
-        if window is None or getattr(window, "_kubrick_ux_installed", False):
-            return
-        try:
-            from kubrick.ui.ux import install
-
-            install(window)
-            window._kubrick_ux_installed = True
-        except (AttributeError, RuntimeError):
-            return
 
     def _resize_to_content(self) -> None:
         duration = self._duration()
@@ -130,7 +117,12 @@ class TimelineWidget(QWidget):
                 for i, clip in enumerate(self.project.audio)
             ]
         return [
-            (i, overlay.start, overlay.end if overlay.end is not None else self._duration(), overlay.value)
+            (
+                i,
+                overlay.start,
+                overlay.end if overlay.end is not None else self._duration(),
+                overlay.value,
+            )
             for i, overlay in enumerate(self.project.overlays)
             if overlay.kind == track
         ]
@@ -180,7 +172,12 @@ class TimelineWidget(QWidget):
             for index, start, end, label in self._items(track):
                 left = self._x_for_time(start)
                 right = max(left + 5, self._x_for_time(end))
-                block = painter.device() and self._block_rect(left, right, y)
+                block = QRect(
+                    int(left),
+                    int(y + 7),
+                    int(right - left),
+                    self.ROW - 14,
+                )
                 selected = self.selected_track == track and self.selected_index == index
                 dragging = self._drag and self._drag.track == track and self._drag.index == index
                 if dragging:
@@ -194,18 +191,16 @@ class TimelineWidget(QWidget):
                 painter.drawRoundedRect(block, 6, 6)
                 painter.setPen(QPen(QColor("#ddd7cf")))
                 text = label.rsplit("/", 1)[-1]
-                painter.drawText(block.adjusted(8, 0, -8, 0), Qt.AlignmentFlag.AlignVCenter, text)
+                painter.drawText(
+                    block.adjusted(8, 0, -8, 0),
+                    Qt.AlignmentFlag.AlignVCenter,
+                    text,
+                )
         playhead_x = self._x_for_time(min(duration, self.position))
         painter.setPen(QPen(QColor("#d52b1e"), 2))
         painter.drawLine(QPointF(playhead_x, 0), QPointF(playhead_x, self.height()))
         painter.setBrush(QBrush(QColor("#d52b1e")))
         painter.drawEllipse(QPointF(playhead_x, 5), 4, 4)
-
-    @staticmethod
-    def _block_rect(left: float, right: float, y: int):
-        from PySide6.QtCore import QRect
-
-        return QRect(int(left), int(y + 7), int(right - left), TimelineWidget.ROW - 14)
 
     def mousePressEvent(self, event) -> None:  # pragma: no cover - Qt interaction
         if event.button() != Qt.MouseButton.LeftButton:
@@ -235,7 +230,12 @@ class TimelineWidget(QWidget):
         if abs(new_start - self._drag_start) > 0.01:
             self._drag_changed = True
             duration = self._drag.end - self._drag.start
-            self._drag = _Hit(self._drag.track, self._drag.index, new_start, new_start + duration)
+            self._drag = _Hit(
+                self._drag.track,
+                self._drag.index,
+                new_start,
+                new_start + duration,
+            )
             self.update()
 
     def mouseReleaseEvent(self, event) -> None:  # pragma: no cover - Qt interaction
