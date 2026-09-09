@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from kubrick.core import MediaClip, Project, build_keep_segments, get_preset
@@ -36,16 +37,17 @@ def build_preset_project(input_path: str | Path, preset_name: str = "clean") -> 
             scene_threshold=preset.scene_threshold,
         ),
     )
-    if preset.video_filters:
+    if preset.video_filters or preset.audio_gain_db:
+        gain = math.pow(10.0, preset.audio_gain_db / 20.0)
         project.video = [
             MediaClip(
                 path=clip.path,
                 source_start=clip.source_start,
                 source_end=clip.source_end,
                 timeline_start=clip.timeline_start,
-                volume=clip.volume,
+                volume=clip.volume * gain,
                 speed=clip.speed,
-                filters=preset.video_filters,
+                filters=(*clip.filters, *preset.video_filters),
             )
             for clip in project.video
         ]
