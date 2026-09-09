@@ -169,7 +169,7 @@ class TimelineWidget(QWidget):
             painter.drawLine(0, y + self.ROW - 1, self.width(), y + self.ROW - 1)
             painter.setPen(QPen(QColor("#aaa59d")))
             painter.drawText(10, y + 28, track.upper())
-            for index, start, end, label in self._items(track):
+            for index, start, end, _label in self._items(track):
                 left = self._x_for_time(start)
                 right = max(left + 7, self._x_for_time(end))
                 block = QRect(int(left), int(y + 7), int(right - left), self.ROW - 14)
