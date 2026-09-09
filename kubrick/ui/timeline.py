@@ -19,7 +19,7 @@ class _Hit:
 
 
 class TimelineWidget(QWidget):
-    """Compact multi-track timeline with persistent selection and drag support."""
+    """Compact multi-track timeline with stable selection and drag targets."""
 
     clip_selected = Signal(str, int)
     position_selected = Signal(float)
@@ -28,7 +28,7 @@ class TimelineWidget(QWidget):
     LEFT = 82
     RULER = 26
     ROW = 48
-    MIN_ZOOM = 24.0
+    MIN_ZOOM = 18.0
     MAX_ZOOM = 180.0
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -37,7 +37,7 @@ class TimelineWidget(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.project: Project | None = None
         self.position = 0.0
-        self.zoom = 70.0
+        self.zoom = 42.0
         self.selected_track: str | None = None
         self.selected_index: int | None = None
         self._drag: _Hit | None = None
@@ -49,10 +49,10 @@ class TimelineWidget(QWidget):
     def _resize_to_content(self) -> None:
         duration = self._duration()
         rows = max(1, len(self._rows()))
-        width = int(self.LEFT + duration * self.zoom + 120)
-        height = self.RULER + rows * self.ROW + 4
+        width = int(self.LEFT + duration * self.zoom + 180)
+        height = self.RULER + rows * self.ROW + 8
         self.setMinimumSize(width, height)
-        self.resize(max(self.width(), width), height)
+        self.resize(max(self.width(), width), max(80, height))
 
     def set_project(self, project: Project | None) -> None:
         self.project = project
@@ -93,7 +93,7 @@ class TimelineWidget(QWidget):
     def _rows(self) -> list[str]:
         if not self.project:
             return []
-        rows = []
+        rows: list[str] = []
         if self.project.video:
             rows.append("video")
         if self.project.audio:
@@ -108,12 +108,12 @@ class TimelineWidget(QWidget):
             return []
         if track == "video":
             return [
-                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path)
+                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, "")
                 for i, clip in enumerate(self.project.video)
             ]
         if track == "audio":
             return [
-                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path)
+                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, "")
                 for i, clip in enumerate(self.project.audio)
             ]
         return [
@@ -169,15 +169,10 @@ class TimelineWidget(QWidget):
             painter.drawLine(0, y + self.ROW - 1, self.width(), y + self.ROW - 1)
             painter.setPen(QPen(QColor("#aaa59d")))
             painter.drawText(10, y + 28, track.upper())
-            for index, start, end, label in self._items(track):
+            for index, start, end, _label in self._items(track):
                 left = self._x_for_time(start)
-                right = max(left + 5, self._x_for_time(end))
-                block = QRect(
-                    int(left),
-                    int(y + 7),
-                    int(right - left),
-                    self.ROW - 14,
-                )
+                right = max(left + 7, self._x_for_time(end))
+                block = QRect(int(left), int(y + 7), int(right - left), self.ROW - 14)
                 selected = self.selected_track == track and self.selected_index == index
                 dragging = self._drag and self._drag.track == track and self._drag.index == index
                 if dragging:
@@ -190,12 +185,8 @@ class TimelineWidget(QWidget):
                 painter.setPen(QPen(QColor(border)))
                 painter.drawRoundedRect(block, 6, 6)
                 painter.setPen(QPen(QColor("#ddd7cf")))
-                text = label.rsplit("/", 1)[-1]
-                painter.drawText(
-                    block.adjusted(8, 0, -8, 0),
-                    Qt.AlignmentFlag.AlignVCenter,
-                    text,
-                )
+                label = f"SEG {index + 1:03d} · {self._format_time(end - start)}" if track == "video" else track.upper()
+                painter.drawText(block.adjusted(7, 0, -7, 0), Qt.AlignmentFlag.AlignVCenter, label)
         playhead_x = self._x_for_time(min(duration, self.position))
         painter.setPen(QPen(QColor("#d52b1e"), 2))
         painter.drawLine(QPointF(playhead_x, 0), QPointF(playhead_x, self.height()))
@@ -208,15 +199,13 @@ class TimelineWidget(QWidget):
         point = event.position()
         hit = self._hit(point.x(), point.y())
         if hit:
-            self.selected_track = hit.track
-            self.selected_index = hit.index
+            self.set_selection(hit.track, hit.index)
             self.clip_selected.emit(hit.track, hit.index)
             if hit.track != "video":
                 self._drag = hit
                 self._drag_origin_x = point.x()
                 self._drag_start = hit.start
                 self._drag_changed = False
-            self.update()
         else:
             self._seek_from_x(point.x())
 
@@ -230,12 +219,7 @@ class TimelineWidget(QWidget):
         if abs(new_start - self._drag_start) > 0.01:
             self._drag_changed = True
             duration = self._drag.end - self._drag.start
-            self._drag = _Hit(
-                self._drag.track,
-                self._drag.index,
-                new_start,
-                new_start + duration,
-            )
+            self._drag = _Hit(self._drag.track, self._drag.index, new_start, new_start + duration)
             self.update()
 
     def mouseReleaseEvent(self, event) -> None:  # pragma: no cover - Qt interaction
