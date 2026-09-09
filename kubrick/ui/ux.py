@@ -222,6 +222,8 @@ def _ensure_video_selection(window) -> None:
         window.selected_track = "video"
         window.selected_index = 0
         window._update_inspector()
+        if hasattr(window.timeline, "set_selection"):
+            window.timeline.set_selection("video", 0)
 
 
 def _preset_status(window, name: str) -> None:
@@ -397,6 +399,8 @@ def _install_project_preview(window) -> None:
     def select(track: str, index: int):
         window.selected_track = track
         window.selected_index = index
+        if hasattr(window.timeline, "set_selection"):
+            window.timeline.set_selection(track, index)
         window._update_inspector()
         if track == "video" and window.project and 0 <= index < len(window.project.video):
             seek_project(window.project.video[index].timeline_start, False)
@@ -414,6 +418,7 @@ def _install_project_preview(window) -> None:
         else:
             window.selected_track = None
             window.selected_index = None
+            window.timeline.set_selection(None, None)
         duration = project_duration(window.project) if window.project and window.project.video else 0.0
         window.seek.setRange(0, int(duration * 1000))
         window._ux_project_position = min(window._ux_project_position, duration)
