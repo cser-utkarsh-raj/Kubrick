@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, QRect, Qt, Signal
+from PySide6.QtCore import QPointF, QRect, QTimer, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
@@ -30,7 +30,6 @@ class TimelineWidget(QWidget):
     ROW = 48
     MIN_ZOOM = 24.0
     MAX_ZOOM = 180.0
-    TRACK_ORDER = ("video", "audio", "text", "image", "shape")
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -44,6 +43,20 @@ class TimelineWidget(QWidget):
         self._drag_start = 0.0
         self._drag_changed = False
         self._resize_to_content()
+        QTimer.singleShot(0, self._install_editor_ux)
+
+    def _install_editor_ux(self) -> None:
+        window = self.window()
+        if window is None or getattr(window, "_kubrick_ux_installed", False):
+            return
+        try:
+            from kubrick.ui.ux import install
+            install(window)
+            window._kubrick_ux_installed = True
+        except (AttributeError, RuntimeError):
+            # The normal application path has all widgets ready by this point;
+            # keep the timeline usable if a minimal embedding omits the editor shell.
+            return
 
     def _resize_to_content(self) -> None:
         duration = self._duration()
@@ -94,15 +107,9 @@ class TimelineWidget(QWidget):
         if not self.project:
             return []
         if track == "video":
-            return [
-                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path)
-                for i, clip in enumerate(self.project.video)
-            ]
+            return [(i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path) for i, clip in enumerate(self.project.video)]
         if track == "audio":
-            return [
-                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path)
-                for i, clip in enumerate(self.project.audio)
-            ]
+            return [(i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path) for i, clip in enumerate(self.project.audio)]
         return [
             (i, overlay.start, overlay.end if overlay.end is not None else self._duration(), overlay.value)
             for i, overlay in enumerate(self.project.overlays)
@@ -133,7 +140,6 @@ class TimelineWidget(QWidget):
         painter.fillRect(self.rect(), QBrush(QColor("#090909")))
         duration = self._duration()
         rows = self._rows()
-
         painter.setPen(QPen(QColor("#343434")))
         painter.drawLine(self.LEFT, 0, self.LEFT, self.height())
         painter.setFont(QFont("Segoe UI", 8))
@@ -146,7 +152,6 @@ class TimelineWidget(QWidget):
             painter.setPen(QPen(QColor("#77736e")))
             painter.drawText(int(x + 3), 17, self._format_time(value))
             value += tick
-
         for row, track in enumerate(rows):
             y = self.RULER + row * self.ROW
             painter.setPen(QPen(QColor("#222222")))
@@ -164,7 +169,6 @@ class TimelineWidget(QWidget):
                 painter.setPen(QPen(QColor("#ddd7cf")))
                 text = label.rsplit("/", 1)[-1]
                 painter.drawText(block.adjusted(8, 0, -8, 0), Qt.AlignmentFlag.AlignVCenter, text)
-
         playhead_x = self._x_for_time(min(duration, self.position))
         painter.setPen(QPen(QColor("#d52b1e"), 2))
         painter.drawLine(QPointF(playhead_x, 0), QPointF(playhead_x, self.height()))
