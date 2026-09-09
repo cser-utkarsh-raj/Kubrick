@@ -3,12 +3,13 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QUrl, Qt
 from PySide6.QtMultimedia import QMediaPlayer
-from PySide6.QtWidgets import QComboBox, QPushButton, QProgressBar
+from PySide6.QtWidgets import QComboBox, QFrame, QPushButton, QProgressBar, QScrollArea, QSplitter
 
 from kubrick.core import PRESETS
 from kubrick.editor import project_duration
+from kubrick.media import probe_duration
 
 FILTERS = {
     "None": "",
@@ -28,62 +29,166 @@ class FilterCombo(QComboBox):
 
 
 def install(window) -> None:
-    """Install the richer editor UX on the existing main window."""
+    """Install the editor UX once all base widgets have been constructed."""
+    if getattr(window, "_kubrick_ux_installed", False):
+        return
+
+    _wire_navigation(window)
+    _fix_inspector(window)
+    _configure_splitters(window)
+    _configure_preset(window)
+    _replace_filter(window)
+    _configure_timeline(window)
+    _install_project_preview(window)
+    _install_busy_ui(window)
+    _install_auto_edit_guard(window)
+
+
+def _wire_navigation(window) -> None:
+    labels = ("Project", "Edit", "Auto Edit", "Scenes", "Transcript", "Audio")
     for button in window.findChildren(QPushButton):
         text = button.text().strip()
-        if text in {"Project", "Edit", "Auto Edit", "Scenes", "Transcript", "Audio"}:
-            button.clicked.connect(lambda _checked=False, name=text: _nav(window, name))
+        name = next((label for label in labels if text.endswith(label)), None)
+        if name is not None:
+            button.clicked.connect(lambda _checked=False, target=name: _nav(window, target))
 
-    if hasattr(window, "preset"):
-        window.preset.setToolTip("Auto Edit style. Select one, then press Auto Edit.")
-        window.preset.currentTextChanged.connect(lambda name: _preset_status(window, name))
-        _preset_status(window, window.preset.currentText())
 
+def _fix_inspector(window) -> None:
+    panel = window.findChild(QFrame, "panel")
+    if panel is None or getattr(window, "_ux_inspector_scroll", None) is not None:
+        return
+    splitter = panel.parentWidget()
+    if not isinstance(splitter, QSplitter):
+        return
+    index = splitter.indexOf(panel)
+    if index < 0:
+        return
+    panel.setMinimumWidth(292)
+    layout = panel.layout()
+    if layout is not None:
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(6)
+    scroll = QScrollArea()
+    scroll.setObjectName("inspectorScroll")
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setWidget(panel)
+    splitter.replaceWidget(index, scroll)
+    splitter.setCollapsible(index, False)
+    splitter.setStretchFactor(index, 0)
+    window._ux_inspector_scroll = scroll
+
+
+def _configure_splitters(window) -> None:
+    for splitter in window.findChildren(QSplitter):
+        splitter.setOpaqueResize(True)
+        splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(8)
+        if splitter.orientation() == Qt.Orientation.Vertical and splitter.count() == 2:
+            splitter.setCollapsible(0, False)
+            splitter.setCollapsible(1, False)
+            splitter.setStretchFactor(0, 3)
+            splitter.setStretchFactor(1, 1)
+            splitter.setSizes([560, 260])
+            splitter.setMinimumHeight(220)
+            window._ux_main_splitter = splitter
+        elif splitter.orientation() == Qt.Orientation.Horizontal and splitter.count() == 2:
+            splitter.setCollapsible(0, False)
+            splitter.setCollapsible(1, False)
+            splitter.setStretchFactor(0, 3)
+            splitter.setStretchFactor(1, 1)
+            splitter.setSizes([900, 320])
+
+
+def _configure_preset(window) -> None:
+    if not hasattr(window, "preset"):
+        return
+    window.preset.setToolTip("Auto Edit style. Select one, then press Auto Edit.")
+    window.preset.currentTextChanged.connect(lambda name: _preset_status(window, name))
+    _preset_status(window, window.preset.currentText())
+
+
+def _replace_filter(window) -> None:
     old = getattr(window, "filter", None)
-    if old is not None:
-        parent = old.parentWidget()
-        combo = FilterCombo(parent)
-        combo.addItems(FILTERS)
-        combo.setToolTip("Choose a visual effect for the selected video clip.")
-        layout = parent.layout()
-        if layout is not None:
-            for i in range(layout.count()):
-                if layout.itemAt(i).widget() is old:
-                    layout.insertWidget(i, combo)
-                    old.hide()
-                    break
-        window.filter = combo
-        combo.currentTextChanged.connect(lambda name: _filter_status(window, name))
-        _filter_status(window, combo.currentText())
+    if old is None or isinstance(old, FilterCombo):
+        return
+    parent = old.parentWidget()
+    combo = FilterCombo(parent)
+    combo.addItems(FILTERS)
+    combo.setToolTip("Choose a visual effect for the selected video clip.")
+    layout = parent.layout()
+    if layout is not None:
+        for i in range(layout.count()):
+            if layout.itemAt(i).widget() is old:
+                layout.insertWidget(i, combo)
+                old.hide()
+                break
+    window.filter = combo
+    combo.currentTextChanged.connect(lambda name: _filter_status(window, name))
+    _filter_status(window, combo.currentText())
 
+
+def _configure_timeline(window) -> None:
     if hasattr(window, "timeline"):
         window.timeline.setToolTip(
-            "Each block is an editable timeline segment. Ctrl+wheel zooms the timeline."
+            "Click a clip to select it. Drag audio/layers. Ctrl+wheel zooms. Drag the splitter handle to resize the timeline."
         )
 
-    _install_project_preview(window)
 
+def _install_busy_ui(window) -> None:
     bar = QProgressBar(window)
     bar.setRange(0, 0)
     bar.setFixedHeight(4)
     bar.hide()
     window._ux_busy_bar = bar
     window.statusBar().addPermanentWidget(bar, 1)
+
     original_set_busy = window._set_busy
 
-    def set_busy(busy: bool, message: str = ""):
+    def set_busy(busy: bool, message: str = "") -> None:
         original_set_busy(busy, message)
         bar.setVisible(busy)
 
     window._set_busy = set_busy
+
+    original_failed = window._worker_failed
+
+    def worker_failed(message: str) -> None:
+        bar.hide()
+        original_failed(message)
+
+    window._worker_failed = worker_failed
+
+
+def _install_auto_edit_guard(window) -> None:
+    """Show busy state for Auto Edit and restore it on both success and failure."""
+    button = getattr(window, "auto", None)
+    bar = getattr(window, "_ux_busy_bar", None)
+    original = getattr(window, "_auto_edit", None)
+    if button is None or bar is None or original is None:
+        return
+    try:
+        button.clicked.disconnect(original)
+    except (RuntimeError, TypeError):
+        pass
+
+    def auto_edit() -> None:
+        if not getattr(window, "_building", False):
+            bar.show()
+        original()
+
+    button.clicked.connect(auto_edit)
+    window._auto_edit_ux = auto_edit
 
 
 def _nav(window, name: str) -> None:
     labels = {"Project", "Edit", "Auto Edit", "Scenes", "Transcript", "Audio"}
     for button in window.findChildren(QPushButton):
         text = button.text().strip()
-        if text in labels:
-            button.setObjectName("navActive" if text == name else "nav")
+        target = next((label for label in labels if text.endswith(label)), None)
+        if target is not None:
+            button.setObjectName("navActive" if target == name else "nav")
             button.style().unpolish(button)
             button.style().polish(button)
 
@@ -91,22 +196,32 @@ def _nav(window, name: str) -> None:
         window.video.setFocus()
         window.status.setText("Project · preview and source")
     elif name == "Edit":
+        _ensure_video_selection(window)
         window.trim_start.setFocus()
-        window.status.setText("Edit · select a timeline clip")
+        window.status.setText("Edit · clip controls ready")
     elif name == "Auto Edit":
         window.preset.setFocus()
-        window.status.setText(f"Auto Edit · {window.preset.currentText()}")
+        window.status.setText(f"Auto Edit · {window.preset.currentText()} · press Auto Edit to run")
     elif name == "Scenes":
         window.timeline.setFocus()
-        window.status.setText(
-            "Scenes · automatic edit segments are shown on the video track"
-        )
+        window.status.setText("Scenes · editable segments are shown on the video track")
     elif name == "Transcript":
-        window.status.setText(
-            "Transcript · optional speech analysis is available from the speech extra"
-        )
+        window.status.setText("Transcript · speech analysis is available from the speech extra")
     elif name == "Audio":
-        window.status.setText("Audio · add a music or voice layer from the Inspector")
+        window.status.setText("Audio · add music or voice layers from the Inspector")
+
+
+def _ensure_video_selection(window) -> None:
+    if not window.project or not window.project.video:
+        return
+    if (
+        getattr(window, "selected_track", None) != "video"
+        or getattr(window, "selected_index", None) is None
+        or window.selected_index >= len(window.project.video)
+    ):
+        window.selected_track = "video"
+        window.selected_index = 0
+        window._update_inspector()
 
 
 def _preset_status(window, name: str) -> None:
@@ -213,10 +328,7 @@ def _install_project_preview(window) -> None:
 
         clip = window.project.video[window._ux_preview_index]
         source = ms / 1000
-        project_pos = (
-            clip.timeline_start
-            + max(0.0, source - clip.source_start) / clip.speed
-        )
+        project_pos = clip.timeline_start + max(0.0, source - clip.source_start) / clip.speed
         end = clip.timeline_end or clip.timeline_start
 
         if (
@@ -241,11 +353,9 @@ def _install_project_preview(window) -> None:
         if status == QMediaPlayer.MediaStatus.LoadedMedia and window._ux_loading:
             window._ux_loading = False
             clip = window.project.video[window._ux_preview_index]
-            source = (
-                clip.source_start
-                + max(0.0, window._ux_wanted_position - clip.timeline_start)
-                * clip.speed
-            )
+            source = clip.source_start + max(
+                0.0, window._ux_wanted_position - clip.timeline_start
+            ) * clip.speed
             window.player.setPosition(int(source * 1000))
             if window._ux_autoplay:
                 window.player.play()
@@ -299,11 +409,12 @@ def _install_project_preview(window) -> None:
 
     def refresh():
         window.timeline.set_project(window.project)
-        duration = (
-            project_duration(window.project)
-            if window.project and window.project.video
-            else 0.0
-        )
+        if window.project and window.project.video:
+            _ensure_video_selection(window)
+        else:
+            window.selected_track = None
+            window.selected_index = None
+        duration = project_duration(window.project) if window.project and window.project.video else 0.0
         window.seek.setRange(0, int(duration * 1000))
         window._ux_project_position = min(window._ux_project_position, duration)
         window.timeline.set_position(window._ux_project_position)
@@ -311,14 +422,24 @@ def _install_project_preview(window) -> None:
         window._update_inspector()
 
     window._refresh_ux = refresh
+    window._refresh = refresh
 
-    def auto_done(project, original):
+    def auto_done(project):
+        original = 0.0
+        if getattr(window, "source", None) is not None:
+            try:
+                original = probe_duration(window.source)
+            except (OSError, RuntimeError, ValueError):
+                original = sum((clip.duration or 0.0) for clip in project.video)
+        if original <= 0.0:
+            original = sum((clip.duration or 0.0) for clip in project.video)
+        window._building = False
         window._set_busy(False)
         window._set_project(project)
         edited = project_duration(project)
         removed = max(0.0, original - edited)
         window.review.setText(
-            f"AUTO EDIT RESULT\n"
+            "AUTO EDIT RESULT\n"
             f"Original {fmt(original)} → Timeline {fmt(edited)}\n"
             f"Removed {fmt(removed)} · {len(project.video)} editable segments\n\n"
             "Preview follows the edited timeline. Render to create the final MP4."
