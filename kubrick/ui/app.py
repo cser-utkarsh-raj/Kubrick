@@ -30,15 +30,7 @@ except ImportError as exc:  # pragma: no cover
     raise RuntimeError("Install the GUI extra with: python -m pip install -e '.[gui]'") from exc
 
 from kubrick.core import AudioClip, MediaClip, Overlay, Project
-from kubrick.editor import (
-    add_audio,
-    add_filter,
-    add_overlay,
-    build_preset_project,
-    cut_range,
-    project_duration,
-    trim_clip,
-)
+from kubrick.editor import add_audio, add_filter, add_overlay, build_preset_project, cut_range, project_duration, trim_clip
 from kubrick.media import probe_duration, render_project
 from kubrick.ui.timeline import TimelineWidget
 
@@ -106,9 +98,13 @@ class MainWindow(QMainWindow):
         self._thread: QThread | None = None
         self._worker: Worker | None = None
         self._building = False
+        self._kubrick_ux_installed = False
         self._build()
         self._install_shortcuts()
         self._reset_project()
+        from kubrick.ui.ux import install
+        install(self)
+        self._kubrick_ux_installed = True
 
     def _build(self) -> None:
         root = QHBoxLayout()
@@ -122,17 +118,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Ready")
 
     def _install_shortcuts(self) -> None:
-        shortcuts = [
-            ("Space", self._toggle_play),
-            ("Left", lambda: self._nudge_position(-100)),
-            ("Right", lambda: self._nudge_position(100)),
-            ("Shift+Left", lambda: self._nudge_position(-1000)),
-            ("Shift+Right", lambda: self._nudge_position(1000)),
-            ("I", self._set_in),
-            ("O", self._set_out),
-            ("Ctrl+Z", self._undo),
-            ("Ctrl+Shift+Z", self._redo),
-        ]
+        shortcuts = [("Space", self._toggle_play), ("Left", lambda: self._nudge_position(-100)), ("Right", lambda: self._nudge_position(100)), ("Shift+Left", lambda: self._nudge_position(-1000)), ("Shift+Right", lambda: self._nudge_position(1000)), ("I", self._set_in), ("O", self._set_out), ("Ctrl+Z", self._undo), ("Ctrl+Shift+Z", self._redo)]
         self._shortcuts = []
         for sequence, slot in shortcuts:
             shortcut = QShortcut(QKeySequence(sequence), self)
@@ -160,14 +146,7 @@ class MainWindow(QMainWindow):
         sub.setObjectName("eyebrow")
         sub.setContentsMargins(4, 7, 4, 20)
         layout.addWidget(sub)
-        for label, active in [
-            ("⌂  Project", True),
-            ("✂  Edit", False),
-            ("✦  Auto Edit", False),
-            ("▦  Scenes", False),
-            ("≡  Transcript", False),
-            ("◫  Audio", False),
-        ]:
+        for label, active in [("⌂  Project", True), ("✂  Edit", False), ("✦  Auto Edit", False), ("▦  Scenes", False), ("≡  Transcript", False), ("◫  Audio", False)]:
             button = QPushButton(label)
             button.setObjectName("navActive" if active else "nav")
             layout.addWidget(button)
@@ -210,12 +189,7 @@ class MainWindow(QMainWindow):
         self.status.setObjectName("muted")
         row.addWidget(self.status)
         row.addStretch()
-        for text, slot in [
-            ("New", self._reset_project),
-            ("Open", self._open_project),
-            ("Save", self._save_project),
-            ("Import", self._import_video),
-        ]:
+        for text, slot in [("New", self._reset_project), ("Open", self._open_project), ("Save", self._save_project), ("Import", self._import_video)]:
             button = QPushButton(text)
             button.clicked.connect(slot)
             row.addWidget(button)
@@ -282,7 +256,6 @@ class MainWindow(QMainWindow):
         self.clip_info.setObjectName("value")
         self.clip_info.setWordWrap(True)
         layout.addWidget(self.clip_info)
-
         label = QLabel("CLIP RANGE")
         label.setObjectName("eyebrow")
         layout.addWidget(label)
@@ -297,60 +270,46 @@ class MainWindow(QMainWindow):
         trim = QPushButton("Apply trim")
         trim.clicked.connect(self._apply_trim)
         layout.addWidget(trim)
-
         label = QLabel("SPEED / VOLUME")
         label.setObjectName("eyebrow")
         layout.addWidget(label)
         media_row = QHBoxLayout()
         self.speed = QLineEdit("1.0")
-        self.speed.setPlaceholderText("speed")
         self.volume = QLineEdit("1.0")
-        self.volume.setPlaceholderText("volume")
         media_row.addWidget(self.speed)
         media_row.addWidget(self.volume)
         layout.addLayout(media_row)
         apply_media = QPushButton("Apply clip settings")
         apply_media.clicked.connect(self._apply_media_settings)
         layout.addWidget(apply_media)
-
         label = QLabel("AUTO PRESET")
         label.setObjectName("eyebrow")
         layout.addWidget(label)
         self.preset = QComboBox()
         self.preset.addItems(["clean", "gentle", "tight", "punchy", "mono-voice"])
         layout.addWidget(self.preset)
-
         label = QLabel("LAYERS")
         label.setObjectName("eyebrow")
         layout.addWidget(label)
-        for text, slot in [
-            ("+ Text", self._add_text),
-            ("+ Image", self._add_image),
-            ("+ Shape", self._add_shape),
-            ("+ Audio", self._add_audio),
-        ]:
+        for text, slot in [("+ Text", self._add_text), ("+ Image", self._add_image), ("+ Shape", self._add_shape), ("+ Audio", self._add_audio)]:
             button = QPushButton(text)
             button.clicked.connect(slot)
             layout.addWidget(button)
-
         label = QLabel("FILTER")
         label.setObjectName("eyebrow")
         layout.addWidget(label)
         self.filter = QLineEdit()
-        self.filter.setPlaceholderText("eq=contrast=1.04:saturation=1.03")
+        self.filter.setPlaceholderText("choose an effect")
         layout.addWidget(self.filter)
         filter_button = QPushButton("Apply to selected clip")
         filter_button.clicked.connect(self._apply_filter)
         layout.addWidget(filter_button)
-
         remove = QPushButton("Remove selected layer / clip")
         remove.setObjectName("danger")
         remove.clicked.connect(self._remove_selected)
         layout.addWidget(remove)
         layout.addStretch(1)
-        self.review = QLabel(
-            "Automatic decisions become normal editable clips. Nothing is rendered until you press Render."
-        )
+        self.review = QLabel("Automatic decisions become normal editable clips. Nothing is rendered until you press Render.")
         self.review.setObjectName("muted")
         self.review.setWordWrap(True)
         layout.addWidget(self.review)
@@ -402,15 +361,13 @@ class MainWindow(QMainWindow):
         self.player.setSource(QUrl())
         self.project_title.setText("UNTITLED")
         self.status.setText("Ready")
-        self._refresh()
+        if hasattr(self, "_refresh"):
+            self._refresh()
+        else:
+            self.timeline.set_project(self.project)
 
     def _import_video(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Import video",
-            "",
-            "Video files (*.mp4 *.mov *.mkv *.webm *.avi *.m4v);;All files (*)",
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Import video", "", "Video files (*.mp4 *.mov *.mkv *.webm *.avi *.m4v);;All files (*)")
         if path:
             self._load_source(Path(path))
 
@@ -430,12 +387,7 @@ class MainWindow(QMainWindow):
         self._refresh()
 
     def _open_project(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open Kubrick project",
-            "",
-            "Kubrick projects (*.kubrick.json);;JSON (*.json)",
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Open Kubrick project", "", "Kubrick projects (*.kubrick.json);;JSON (*.json)")
         if not path:
             return
         try:
@@ -450,12 +402,7 @@ class MainWindow(QMainWindow):
         if not self.project or not self.project.video:
             QMessageBox.warning(self, "Kubrick", "Import footage first.")
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save project",
-            f"{self.project.name}.kubrick.json",
-            "Kubrick project (*.kubrick.json)",
-        )
+        path, _ = QFileDialog.getSaveFileName(self, "Save project", f"{self.project.name}.kubrick.json", "Kubrick project (*.kubrick.json)")
         if not path:
             return
         try:
@@ -471,8 +418,6 @@ class MainWindow(QMainWindow):
         self.project = project
         self.project_title.setText(project.name.upper())
         self.source = Path(project.video[0].path) if project.video else None
-        if self.source and self.source.exists():
-            self.player.setSource(QUrl.fromLocalFile(str(self.source)))
         self._refresh()
 
     def _snapshot_and(self, mutation, message: str) -> None:
@@ -510,13 +455,12 @@ class MainWindow(QMainWindow):
         self.selected_track = track
         self.selected_index = index
         self._update_inspector()
-        if track == "video" and self.project and 0 <= index < len(self.project.video):
-            clip = self.project.video[index]
-            self.player.setSource(QUrl.fromLocalFile(str(clip.path)))
-            self.player.setPosition(int(clip.source_start * 1000))
 
     def _timeline_position(self, position: float) -> None:
-        self.player.setPosition(int(position * 1000))
+        if hasattr(self, "_ux_seek_project"):
+            self._ux_seek_project(position)
+        else:
+            self.player.setPosition(int(position * 1000))
 
     def _timeline_moved(self, track: str, index: int, start: float) -> None:
         if not self.project:
@@ -567,8 +511,7 @@ class MainWindow(QMainWindow):
                 item = MediaClip(clip.path, clip.source_start, clip.source_end, timeline, clip.volume, clip.speed, clip.filters)
                 normalized.append(item)
                 timeline += item.duration or 0.0
-            updated = Project(self.project.name, normalized, list(self.project.audio), list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset)
-            self._set_project(updated)
+            self._set_project(Project(self.project.name, normalized, list(self.project.audio), list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset))
             self.status.setText("Trim applied")
         except Exception as exc:
             QMessageBox.critical(self, "Kubrick", str(exc))
@@ -591,8 +534,7 @@ class MainWindow(QMainWindow):
                 normalized_item = MediaClip(item.path, item.source_start, item.source_end, timeline, item.volume, item.speed, item.filters)
                 normalized.append(normalized_item)
                 timeline += normalized_item.duration or 0.0
-            updated = Project(self.project.name, normalized, list(self.project.audio), list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset)
-            self._set_project(updated)
+            self._set_project(Project(self.project.name, normalized, list(self.project.audio), list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset))
             self.status.setText("Clip settings applied")
         except Exception as exc:
             QMessageBox.critical(self, "Kubrick", str(exc))
@@ -622,189 +564,166 @@ class MainWindow(QMainWindow):
     def _add_shape(self) -> None:
         if not self.project or not self.project.video:
             return
-        overlay = Overlay("shape", "#d52b1e", 0, min(2.0, project_duration(self.project)), width=420, height=120, opacity=0.85)
+        overlay = Overlay("shape", "#d52b1e", 0, min(3.0, project_duration(self.project)), x=40, y=40, width=320, height=180, opacity=0.75)
         self._snapshot_and(lambda project: add_overlay(project, overlay), "Shape layer added")
 
     def _add_audio(self) -> None:
         if not self.project or not self.project.video:
             return
-        path, _ = QFileDialog.getOpenFileName(self, "Choose audio", "", "Audio files (*.mp3 *.wav *.m4a *.aac *.flac *.ogg);;All files (*)")
+        path, _ = QFileDialog.getOpenFileName(self, "Choose audio", "", "Audio (*.wav *.mp3 *.m4a *.aac *.flac *.ogg)")
         if not path:
             return
         try:
             duration = probe_duration(path)
+            clip = AudioClip(path, 0, duration, 0)
+            self._snapshot_and(lambda project: add_audio(project, clip), "Audio layer added")
         except Exception as exc:
-            QMessageBox.critical(self, "Kubrick", f"Could not inspect audio:\n{exc}")
-            return
-        audio = AudioClip(path, 0, duration, 0, 1.0)
-        self._snapshot_and(lambda project: add_audio(project, audio), "Audio layer added")
+            QMessageBox.critical(self, "Kubrick", str(exc))
 
     def _remove_selected(self) -> None:
-        if not self.project or self.selected_index is None or not self.selected_track:
+        if not self.project or self.selected_index is None or self.selected_track is None:
+            QMessageBox.information(self, "Kubrick", "Select a timeline item first.")
             return
-        track, index = self.selected_track, self.selected_index
-        if track == "video" and index < len(self.project.video):
-            if len(self.project.video) == 1:
-                QMessageBox.warning(self, "Kubrick", "A project needs at least one video clip.")
-                return
-            clips = [clip for i, clip in enumerate(self.project.video) if i != index]
+        if self.selected_track == "video" and 0 <= self.selected_index < len(self.project.video):
+            clips = list(self.project.video)
+            clips.pop(self.selected_index)
             timeline = 0.0
             normalized = []
             for clip in clips:
                 item = MediaClip(clip.path, clip.source_start, clip.source_end, timeline, clip.volume, clip.speed, clip.filters)
                 normalized.append(item)
                 timeline += item.duration or 0.0
-            updated = Project(self.project.name, normalized, list(self.project.audio), list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset)
-            self._set_project(updated)
-        elif track == "audio" and index < len(self.project.audio):
-            updated = Project(self.project.name, list(self.project.video), [clip for i, clip in enumerate(self.project.audio) if i != index], list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset)
-            self._set_project(updated)
-        elif track in {"text", "image", "shape"} and index < len(self.project.overlays):
-            updated = Project(self.project.name, list(self.project.video), list(self.project.audio), [overlay for i, overlay in enumerate(self.project.overlays) if i != index], self.project.width, self.project.height, self.project.fps, self.project.preset)
-            self._set_project(updated)
-        self.selected_index = None
-        self.selected_track = None
-        self.status.setText("Selection removed")
+            self._set_project(Project(self.project.name, normalized, list(self.project.audio), list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset))
+            self.selected_index = None
+            self.status.setText("Video segment removed")
+        elif self.selected_track == "audio" and 0 <= self.selected_index < len(self.project.audio):
+            audio = list(self.project.audio)
+            audio.pop(self.selected_index)
+            self._set_project(Project(self.project.name, list(self.project.video), audio, list(self.project.overlays), self.project.width, self.project.height, self.project.fps, self.project.preset))
+            self.selected_index = None
+            self.status.setText("Audio layer removed")
+        elif self.selected_track in {"text", "image", "shape"}:
+            matches = [i for i, item in enumerate(self.project.overlays) if item.kind == self.selected_track]
+            if self.selected_index in matches:
+                overlays = list(self.project.overlays)
+                overlays.pop(self.selected_index)
+                self._set_project(Project(self.project.name, list(self.project.video), list(self.project.audio), overlays, self.project.width, self.project.height, self.project.fps, self.project.preset))
+                self.selected_index = None
+                self.status.setText("Layer removed")
 
     def _cut_range(self) -> None:
         if not self.project or not self.project.video:
             return
         try:
-            start = float(self.cut_start.text())
-            end = float(self.cut_end.text())
+            start, end = float(self.cut_start.text()), float(self.cut_end.text())
             self._snapshot_and(lambda project: cut_range(project, start, end), f"Cut {start:.2f}–{end:.2f}s")
-        except ValueError as exc:
+        except Exception as exc:
             QMessageBox.critical(self, "Kubrick", str(exc))
 
+    def _seek(self, value: int) -> None:
+        if hasattr(self, "_ux_seek_project"):
+            self._ux_seek_project(value / 1000)
+        else:
+            self.player.setPosition(value)
+
+    def _position_changed(self, position: int) -> None:
+        if not hasattr(self, "_ux_project_position"):
+            self.time.setText(f"{position / 1000:.1f}s")
+
+    def _duration_changed(self, duration: int) -> None:
+        if not hasattr(self, "_ux_project_position"):
+            self.seek.setRange(0, duration)
+            self.time.setText(f"00:00 / {duration / 1000:.2f}")
+
+    def _toggle_play(self) -> None:
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+        else:
+            self.player.play()
+
+    def _nudge_position(self, delta_ms: int) -> None:
+        if hasattr(self, "_ux_project_position"):
+            self._ux_seek_project(self._ux_project_position + delta_ms / 1000)
+        else:
+            self.player.setPosition(max(0, self.player.position() + delta_ms))
+
     def _set_in(self) -> None:
-        self.cut_start.setText(f"{self.player.position() / 1000:.3f}")
-        self.status.setText("In point set")
+        if self.player.source().isValid():
+            self.trim_start.setText(f"{self.player.position() / 1000:.3f}")
 
     def _set_out(self) -> None:
-        self.cut_end.setText(f"{self.player.position() / 1000:.3f}")
-        self.status.setText("Out point set")
-
-    def _nudge_position(self, milliseconds: int) -> None:
-        position = max(0, min(self.player.duration(), self.player.position() + milliseconds))
-        self.player.setPosition(position)
+        if self.player.source().isValid():
+            self.trim_end.setText(f"{self.player.position() / 1000:.3f}")
 
     def _undo(self) -> None:
-        if not self.history or self.project is None:
+        if not self.history:
             return
         self.future.append(copy.deepcopy(self.project))
         self.project = self.history.pop()
-        self.source = Path(self.project.video[0].path) if self.project.video else None
-        if self.source and self.source.exists():
-            self.player.setSource(QUrl.fromLocalFile(str(self.source)))
         self._refresh()
-        self.status.setText("Undo")
 
     def _redo(self) -> None:
-        if not self.future or self.project is None:
+        if not self.future:
             return
         self.history.append(copy.deepcopy(self.project))
         self.project = self.future.pop()
-        self.source = Path(self.project.video[0].path) if self.project.video else None
-        if self.source and self.source.exists():
-            self.player.setSource(QUrl.fromLocalFile(str(self.source)))
         self._refresh()
-        self.status.setText("Redo")
 
-    def _render(self) -> None:
-        if self._building:
-            return
-        if not self.project or not self.project.video:
-            QMessageBox.warning(self, "Kubrick", "Import footage first.")
-            return
-        try:
-            self.project.validate()
-        except Exception as exc:
-            QMessageBox.critical(self, "Kubrick", f"Project validation failed:\n{exc}")
-            return
-        path, _ = QFileDialog.getSaveFileName(self, "Render video", f"{self.project.name}_kubrick.mp4", "MP4 video (*.mp4)")
-        if not path:
-            return
-        project = copy.deepcopy(self.project)
-        self._building = True
-        self.auto.setEnabled(False)
-        self.render.setEnabled(False)
-        self.status.setText("Rendering…")
-        self._run_worker(lambda: render_project(project, path), self._render_done)
-
-    def _render_done(self, _result) -> None:
-        self._building = False
-        self.auto.setEnabled(True)
-        self.render.setEnabled(True)
-        self.status.setText("Render complete")
-        QMessageBox.information(self, "Kubrick", "Render complete. The output file is ready.")
-
-    def _run_worker(self, fn, callback) -> None:
-        if self._thread is not None and self._thread.isRunning():
-            return
-        thread = QThread(self)
-        worker = Worker(fn)
-        worker.moveToThread(thread)
-        thread.started.connect(worker.run)
-        worker.finished.connect(callback)
-        worker.failed.connect(self._worker_failed)
-        worker.finished.connect(thread.quit)
-        worker.failed.connect(thread.quit)
-        thread.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
-        thread.finished.connect(self._worker_finished)
-        self._thread = thread
-        self._worker = worker
-        thread.start()
+    def _run_worker(self, fn, done) -> None:
+        self._thread = QThread(self)
+        self._worker = Worker(fn)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(done)
+        self._worker.failed.connect(self._worker_failed)
+        self._worker.finished.connect(self._thread.quit)
+        self._worker.failed.connect(self._thread.quit)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.start()
 
     def _worker_failed(self, message: str) -> None:
         self._building = False
         self.auto.setEnabled(True)
         self.render.setEnabled(True)
-        self.status.setText("Operation failed")
         QMessageBox.critical(self, "Kubrick", message)
 
-    def _worker_finished(self) -> None:
-        self._thread = None
-        self._worker = None
-
-    def _toggle_play(self) -> None:
-        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self.player.pause()
-            self.play.setText("▶")
-        else:
-            self.player.play()
-            self.play.setText("Ⅱ")
-
-    def _seek(self, value: int) -> None:
-        self.player.setPosition(value)
-
-    def _position_changed(self, position: int) -> None:
-        self.seek.setValue(position)
-        self.time.setText(f"{self._format_ms(position)} / {self._format_ms(self.player.duration())}")
-        self.timeline.set_position(position / 1000)
-
-    def _duration_changed(self, duration: int) -> None:
-        self.seek.setRange(0, max(0, duration))
-        self.time.setText(f"{self._format_ms(self.player.position())} / {self._format_ms(duration)}")
-
-    @staticmethod
-    def _format_ms(milliseconds: int) -> str:
-        seconds = max(0, milliseconds // 1000)
-        minutes, seconds = divmod(seconds, 60)
-        hours, minutes = divmod(minutes, 60)
-        if hours:
-            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-        return f"{minutes:02d}:{seconds:02d}"
+    def _set_busy(self, busy: bool, message: str = "") -> None:
+        self.auto.setEnabled(not busy)
+        self.render.setEnabled(not busy)
+        if message:
+            self.status.setText(message)
 
     def _refresh(self) -> None:
         self.timeline.set_project(self.project)
-        self.timeline.set_position(self.player.position() / 1000)
+        duration = project_duration(self.project) if self.project and self.project.video else 0.0
+        self.seek.setRange(0, int(duration * 1000))
+        self.time.setText(f"00:00 / {self._format_ms(int(duration * 1000))}")
         self._update_inspector()
+
+    @staticmethod
+    def _format_ms(value: int) -> str:
+        total = max(0, value // 1000)
+        minutes, seconds = divmod(total, 60)
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes:02d}:{seconds:02d}"
+
+    def _render(self) -> None:
+        if not self.project or not self.project.video:
+            QMessageBox.warning(self, "Kubrick", "Import footage first.")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Render video", f"{self.project.name}_edited.mp4", "MP4 video (*.mp4)")
+        if not path:
+            return
+        self._set_busy(True, "Rendering…")
+        self._run_worker(lambda: render_project(self.project, path), lambda _: self._render_done(path))
+
+    def _render_done(self, path: str) -> None:
+        self._set_busy(False, f"Rendered · {Path(path).name}")
+        QMessageBox.information(self, "Kubrick", f"Render complete:\n{path}")
 
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("Kubrick")
     window = MainWindow()
     window.show()
     return app.exec()
