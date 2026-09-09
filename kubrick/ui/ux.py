@@ -53,13 +53,6 @@ def _wire_navigation(window) -> None:
 
 
 def _configure_inspector(window) -> None:
-    """Keep the Inspector visible; never reparent it through a late scroll wrapper.
-
-    The previous implementation replaced the splitter child after construction.
-    Qt could then give the replacement a zero-width size hint on Windows. The
-    Inspector is now a normal splitter pane and its controls are compact enough
-    to remain usable at the application's minimum height.
-    """
     panel = window.findChild(QFrame, "panel")
     if panel is None:
         return
@@ -276,8 +269,6 @@ def _install_project_preview(window) -> None:
         if not window.project or not 0 <= index < len(window.project.video):
             return
         clip = window.project.video[index]
-        local = max(0.0, project_position - clip.timeline_start)
-        source = clip.source_start + local * clip.speed
         window._ux_preview_index = index
         window._ux_wanted_position = project_position
         window._ux_autoplay = autoplay
