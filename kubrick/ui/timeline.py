@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, QRect, QTimer, Qt, Signal
+from PySide6.QtCore import QPointF, QTimer, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
@@ -19,7 +19,7 @@ class _Hit:
 
 
 class TimelineWidget(QWidget):
-    """Compact multi-track timeline: many clips live on shared track rows."""
+    """Compact multi-track timeline with persistent selection and drag support."""
 
     clip_selected = Signal(str, int)
     position_selected = Signal(float)
@@ -38,6 +38,8 @@ class TimelineWidget(QWidget):
         self.project: Project | None = None
         self.position = 0.0
         self.zoom = 70.0
+        self.selected_track: str | None = None
+        self.selected_index: int | None = None
         self._drag: _Hit | None = None
         self._drag_origin_x = 0.0
         self._drag_start = 0.0
@@ -51,11 +53,10 @@ class TimelineWidget(QWidget):
             return
         try:
             from kubrick.ui.ux import install
+
             install(window)
             window._kubrick_ux_installed = True
         except (AttributeError, RuntimeError):
-            # The normal application path has all widgets ready by this point;
-            # keep the timeline usable if a minimal embedding omits the editor shell.
             return
 
     def _resize_to_content(self) -> None:
@@ -69,7 +70,19 @@ class TimelineWidget(QWidget):
     def set_project(self, project: Project | None) -> None:
         self.project = project
         self._drag = None
+        if project is None:
+            self.selected_track = None
+            self.selected_index = None
+        elif self.selected_track == "video" and (
+            self.selected_index is None or self.selected_index >= len(project.video)
+        ):
+            self.selected_index = 0 if project.video else None
         self._resize_to_content()
+        self.update()
+
+    def set_selection(self, track: str | None, index: int | None) -> None:
+        self.selected_track = track
+        self.selected_index = index
         self.update()
 
     def set_position(self, position: float) -> None:
@@ -107,9 +120,15 @@ class TimelineWidget(QWidget):
         if not self.project:
             return []
         if track == "video":
-            return [(i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path) for i, clip in enumerate(self.project.video)]
+            return [
+                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path)
+                for i, clip in enumerate(self.project.video)
+            ]
         if track == "audio":
-            return [(i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path) for i, clip in enumerate(self.project.audio)]
+            return [
+                (i, clip.timeline_start, clip.timeline_end or clip.timeline_start, clip.path)
+                for i, clip in enumerate(self.project.audio)
+            ]
         return [
             (i, overlay.start, overlay.end if overlay.end is not None else self._duration(), overlay.value)
             for i, overlay in enumerate(self.project.overlays)
@@ -161,10 +180,17 @@ class TimelineWidget(QWidget):
             for index, start, end, label in self._items(track):
                 left = self._x_for_time(start)
                 right = max(left + 5, self._x_for_time(end))
-                block = QRect(int(left), int(y + 7), int(right - left), self.ROW - 14)
-                selected = self._drag and self._drag.track == track and self._drag.index == index
-                painter.setBrush(QBrush(QColor("#3a1714" if selected else "#191919")))
-                painter.setPen(QPen(QColor("#8d332b" if selected else "#4c2926")))
+                block = painter.device() and self._block_rect(left, right, y)
+                selected = self.selected_track == track and self.selected_index == index
+                dragging = self._drag and self._drag.track == track and self._drag.index == index
+                if dragging:
+                    fill, border = "#4a1d19", "#d14a3d"
+                elif selected:
+                    fill, border = "#321714", "#a93d33"
+                else:
+                    fill, border = "#191919", "#4c2926"
+                painter.setBrush(QBrush(QColor(fill)))
+                painter.setPen(QPen(QColor(border)))
                 painter.drawRoundedRect(block, 6, 6)
                 painter.setPen(QPen(QColor("#ddd7cf")))
                 text = label.rsplit("/", 1)[-1]
@@ -175,18 +201,27 @@ class TimelineWidget(QWidget):
         painter.setBrush(QBrush(QColor("#d52b1e")))
         painter.drawEllipse(QPointF(playhead_x, 5), 4, 4)
 
+    @staticmethod
+    def _block_rect(left: float, right: float, y: int):
+        from PySide6.QtCore import QRect
+
+        return QRect(int(left), int(y + 7), int(right - left), TimelineWidget.ROW - 14)
+
     def mousePressEvent(self, event) -> None:  # pragma: no cover - Qt interaction
         if event.button() != Qt.MouseButton.LeftButton:
             return
         point = event.position()
         hit = self._hit(point.x(), point.y())
         if hit:
+            self.selected_track = hit.track
+            self.selected_index = hit.index
             self.clip_selected.emit(hit.track, hit.index)
             if hit.track != "video":
                 self._drag = hit
                 self._drag_origin_x = point.x()
                 self._drag_start = hit.start
                 self._drag_changed = False
+            self.update()
         else:
             self._seek_from_x(point.x())
 
