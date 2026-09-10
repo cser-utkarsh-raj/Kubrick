@@ -14,7 +14,7 @@ class AnalyzerConfig:
     profile: str = "natural"
     noise_db: float = -38.0
     scene_threshold: float = 0.35
-    visual: bool = True
+    visual: bool = False
 
     def __post_init__(self) -> None:
         if self.profile not in PROFILES:
@@ -25,7 +25,9 @@ class AnalyzerConfig:
             raise ValueError("scene_threshold must be between 0 and 1")
 
 
-def _visual_review_decisions(blackouts: list[TimeRange], freezes: list[TimeRange]) -> list[EditDecision]:
+def _visual_review_decisions(
+    blackouts: list[TimeRange], freezes: list[TimeRange]
+) -> list[EditDecision]:
     decisions: list[EditDecision] = []
     for interval in blackouts:
         decisions.append(
@@ -51,6 +53,7 @@ def _visual_review_decisions(blackouts: list[TimeRange], freezes: list[TimeRange
 
 
 def analyze(path: str | Path, config: AnalyzerConfig = AnalyzerConfig()) -> AnalysisReport:
+    """Analyze speech pauses, optionally adding visual review evidence."""
     profile = PROFILES[config.profile]
     duration = probe_duration(path)
     silences = detect_silence(
@@ -64,6 +67,7 @@ def analyze(path: str | Path, config: AnalyzerConfig = AnalyzerConfig()) -> Anal
     metadata = {
         "profile": profile.name,
         "noise_db": config.noise_db,
+        "visual_enabled": config.visual,
     }
     if config.visual:
         visuals = analyze_visuals(path, threshold=config.scene_threshold)
