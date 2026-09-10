@@ -48,21 +48,55 @@ def render_project(
         raise ValueError("crf must be 0..51")
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    input_paths = {Path(clip.path).resolve() for clip in project.video}
-    if output.resolve() in input_paths:
-        raise ValueError("output_path must be different from the source video")
 
     video = sorted(project.video, key=lambda c: c.timeline_start)
-    if any(c.duration is None for c in video):
-        raise ValueError("Project video clips must have explicit source_end values")
+    all_input_paths = {
+        Path(path).resolve()
+        for path in [*(clip.path for clip in video), *(clip.path for clip in project.audio)]
+    }
+    all_input_paths.update(
+        Path(overlay.value).resolve()
+        for overlay in project.overlays
+        if overlay.kind == "image"
+    )
+    if output.resolve() in all_input_paths:
+        raise ValueError("output_path must be different from every project input")
+
+    source_durations: dict[Path, float] = {}
+    audio_streams: dict[Path, bool] = {}
+
+    def source_info(path: str) -> tuple[Path, float, bool]:
+        resolved = Path(path).resolve()
+        if resolved not in source_durations:
+            source_durations[resolved] = probe_duration(resolved)
+            audio_streams[resolved] = has_audio_stream(resolved)
+        return resolved, source_durations[resolved], audio_streams[resolved]
+
     expected = 0.0
     for clip in video:
+        if clip.duration is None:
+            raise ValueError("Project video clips must have explicit source_end values")
+        resolved, source_duration, _ = source_info(clip.path)
+        if clip.source_end > source_duration + 1e-6:
+            raise ValueError(
+                f"Video clip exceeds source duration: {resolved.name} "
+                f"ends at {clip.source_end:.3f}s, source is {source_duration:.3f}s"
+            )
         if abs(clip.timeline_start - expected) > 1e-4:
             raise ValueError(
                 "main video clips must be sequential; use merge_clips() to normalize them"
             )
         expected += _duration(clip)
     total_duration = expected
+
+    for clip in project.audio:
+        resolved, source_duration, _ = source_info(clip.path)
+        source_end = clip.source_end if clip.source_end is not None else source_duration
+        if source_end > source_duration + 1e-6:
+            raise ValueError(
+                f"Audio clip exceeds source duration: {resolved.name} "
+                f"ends at {source_end:.3f}s, source is {source_duration:.3f}s"
+            )
 
     inputs: list[str] = ["ffmpeg", "-hide_banner", "-y"]
     for clip in video:
@@ -96,10 +130,13 @@ def render_project(
             current = f"[{label}]"
         video_labels.append(current)
 
-        if has_audio_stream(clip.path):
+        _, _, has_audio = source_info(clip.path)
+        if has_audio:
             filters.append(
                 f"[{index}:a]atrim=start={clip.source_start:.6f}:end={clip.source_end:.6f},"
-                f"asetpts=PTS-STARTPTS,{_atempo_chain(clip.speed)},volume={clip.volume:.4f}[a{index}]"
+                f"asetpts=PTS-STARTPTS,{_atempo_chain(clip.speed)},"
+                f"aformat=sample_rates=48000:channel_layouts=stereo,"
+                f"volume={clip.volume:.4f}[a{index}]"
             )
         else:
             filters.append(
@@ -176,7 +213,8 @@ def render_project(
         duration = max(0.0, source_end - clip.source_start)
         chain = (
             f"[{input_index}:a]atrim=start={clip.source_start:.6f}:end={source_end:.6f},"
-            f"asetpts=PTS-STARTPTS,volume={clip.volume:.4f}"
+            f"asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,"
+            f"volume={clip.volume:.4f}"
         )
         if clip.fade_in:
             chain += f",afade=t=in:st=0:d={min(clip.fade_in, duration):.6f}"
