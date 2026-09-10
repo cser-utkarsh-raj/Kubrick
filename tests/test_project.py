@@ -34,6 +34,21 @@ def test_project_round_trip(tmp_path: Path) -> None:
     assert loaded.schema_version == 1
 
 
+def test_project_save_uses_relative_media_paths(tmp_path: Path) -> None:
+    media_dir = tmp_path / "media"
+    media_dir.mkdir()
+    source = media_dir / "input.mp4"
+    source.write_bytes(b"placeholder")
+    project_path = tmp_path / "edit.kubrick.json"
+    Project(video=[MediaClip(str(source), 0, 2)]).save(project_path)
+
+    saved = json.loads(project_path.read_text(encoding="utf-8"))
+    assert saved["video"][0]["path"] == "media/input.mp4"
+
+    loaded = Project.load(project_path)
+    assert loaded.video[0].path == str(source.resolve())
+
+
 def test_project_load_resolves_relative_media_paths(tmp_path: Path) -> None:
     media_dir = tmp_path / "media"
     media_dir.mkdir()
