@@ -20,6 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument("input", type=Path)
     analyze_parser.add_argument("--profile", choices=("gentle", "natural", "tight"), default="natural")
     analyze_parser.add_argument("--noise-db", type=float, default=-38.0)
+    analyze_parser.add_argument("--visual", action="store_true", help="also run visual review analysis")
     analyze_parser.add_argument("--json", dest="json_path", type=Path)
 
     render_parser = sub.add_parser("render", help="Automatically tighten footage and render an MP4")
@@ -70,7 +71,8 @@ def main() -> int:
     args = _build_parser().parse_args()
 
     if args.command == "analyze":
-        report = analyze(args.input, AnalyzerConfig(args.profile, args.noise_db))
+        config = AnalyzerConfig(args.profile, args.noise_db, visual=args.visual)
+        report = analyze(args.input, config)
         text = json.dumps(_report_json(report), indent=2)
         if args.json_path:
             args.json_path.parent.mkdir(parents=True, exist_ok=True)
