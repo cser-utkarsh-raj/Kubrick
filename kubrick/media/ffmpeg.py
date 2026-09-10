@@ -51,11 +51,7 @@ def render_keep_segments(
     preset: str = "medium",
     audio_bitrate: str = "192k",
 ) -> None:
-    """Render retained A/V intervals into a synchronized MP4.
-
-    Arbitrary cut points require re-encoding. A filter script is used instead
-    of an inline filter graph so large projects are not limited by shell length.
-    """
+    """Render retained A/V intervals into a synchronized MP4."""
     if not segments:
         raise ValueError("No segments to render")
     if not 0 <= crf <= 51:
@@ -66,6 +62,16 @@ def render_keep_segments(
         raise FileNotFoundError(input_path)
     if not has_audio_stream(input_path):
         raise FFmpegError("Input has no audio stream; Kubrick requires synchronized A/V media")
+    duration = probe_duration(input_path)
+    previous_end = 0.0
+    for segment in segments:
+        if segment.source.start < 0 or segment.source.end > duration + 1e-6:
+            raise ValueError("Keep segment exceeds source duration")
+        if segment.source.end <= segment.source.start:
+            raise ValueError("Keep segment must have positive duration")
+        if segment.source.start < previous_end - 1e-6:
+            raise ValueError("Keep segments must be ordered and non-overlapping")
+        previous_end = segment.source.end
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     filters: list[str] = []
