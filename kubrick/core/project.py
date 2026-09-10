@@ -94,8 +94,7 @@ class AudioClip:
 
     @property
     def timeline_end(self) -> float | None:
-        duration = self.duration
-        return None if duration is None else self.timeline_start + duration
+        return None if self.duration is None else self.timeline_start + self.duration
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +205,29 @@ class Project:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    def _save_dict(self, base: Path) -> dict[str, Any]:
+        """Serialize media references relative to the project file directory."""
+        payload = self.to_dict()
+
+        def relative(value: str) -> str:
+            path = Path(value).expanduser()
+            if not path.is_absolute():
+                return value
+            try:
+                return os.path.relpath(path, base)
+            except ValueError:
+                # Windows can have unrelated drive letters; keep an absolute path.
+                return str(path)
+
+        for clip in payload["video"]:
+            clip["path"] = relative(clip["path"])
+        for clip in payload["audio"]:
+            clip["path"] = relative(clip["path"])
+        for overlay in payload["overlays"]:
+            if overlay["kind"] == "image":
+                overlay["value"] = relative(overlay["value"])
+        return payload
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Project:
         if not isinstance(data, dict):
@@ -234,10 +256,10 @@ class Project:
         )
 
     def save(self, path: str | Path) -> None:
-        """Atomically save the project so a failed write cannot corrupt the edit."""
+        """Atomically save the project with portable media references."""
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        payload = json.dumps(self.to_dict(), indent=2) + "\n"
+        payload = json.dumps(self._save_dict(destination.parent), indent=2) + "\n"
         fd, temp_name = tempfile.mkstemp(
             prefix=f".{destination.stem}.",
             suffix=".tmp",
