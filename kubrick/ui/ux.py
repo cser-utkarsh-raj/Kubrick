@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtMultimedia import QMediaPlayer
-from PySide6.QtWidgets import QComboBox, QFrame, QPushButton, QProgressBar, QSplitter
+from PySide6.QtWidgets import QComboBox, QFrame, QProgressBar, QPushButton, QScrollArea, QSplitter
 
 from kubrick.core import PRESETS
 from kubrick.editor import project_duration
@@ -58,11 +58,24 @@ def _configure_inspector(window) -> None:
         return
     panel.setMinimumWidth(280)
     panel.setMaximumWidth(420)
-    panel.setSizePolicy(panel.sizePolicy().horizontalPolicy(), panel.sizePolicy().verticalPolicy())
     layout = panel.layout()
     if layout is not None:
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(6)
+
+    splitter = panel.parentWidget()
+    if isinstance(splitter, QSplitter):
+        index = splitter.indexOf(panel)
+        if index >= 0:
+            scroll = QScrollArea(splitter)
+            scroll.setObjectName("inspectorScroll")
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            scroll.setWidget(panel)
+            splitter.replaceWidget(index, scroll)
+            scroll.setMinimumWidth(280)
+            window._ux_inspector_scroll = scroll
     window._ux_inspector = panel
 
 
@@ -281,7 +294,6 @@ def _install_project_preview(window) -> None:
         window._ux_loading = True
         window._ux_expected_path = target_path
         window.player.stop()
-        # Clearing first invalidates queued media events from the previous source.
         window.player.setSource(QUrl())
         window.player.setSource(QUrl.fromLocalFile(target_path))
         window.player.setPlaybackRate(clip.speed)
