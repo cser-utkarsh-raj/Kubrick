@@ -96,5 +96,8 @@ def render_keep_segments(
             "-c:a", "aac", "-b:a", audio_bitrate,
             "-movflags", "+faststart", str(output_path),
         ])
+    except Exception:
+        output_path.unlink(missing_ok=True)
+        raise
     finally:
         script_path.unlink(missing_ok=True)
