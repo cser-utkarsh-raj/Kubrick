@@ -56,12 +56,13 @@ def _configure_inspector(window) -> None:
     panel = window.findChild(QFrame, "panel")
     if panel is None:
         return
-    panel.setMinimumWidth(300)
-    panel.setMaximumWidth(390)
+    panel.setMinimumWidth(280)
+    panel.setMaximumWidth(420)
+    panel.setSizePolicy(panel.sizePolicy().horizontalPolicy(), panel.sizePolicy().verticalPolicy())
     layout = panel.layout()
     if layout is not None:
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(5)
+        layout.setSpacing(6)
     window._ux_inspector = panel
 
 
@@ -84,15 +85,16 @@ def _configure_splitters(window) -> None:
         elif splitter.orientation() == Qt.Orientation.Horizontal and splitter.count() == 2:
             splitter.setCollapsible(0, False)
             splitter.setCollapsible(1, False)
-            splitter.setStretchFactor(0, 3)
+            splitter.setStretchFactor(0, 1)
             splitter.setStretchFactor(1, 0)
-            splitter.setSizes([900, 330])
+            splitter.setSizes([900, 310])
+            window._ux_editor_splitter = splitter
 
 
 def _configure_preset(window) -> None:
     if not hasattr(window, "preset"):
         return
-    window.preset.setToolTip("Auto Edit style. Select one, then press Auto Edit.")
+    window.preset.setToolTip("Auto Edit style. Select one, then press Auto Edit to run.")
     window.preset.currentTextChanged.connect(lambda name: _preset_status(window, name))
     _preset_status(window, window.preset.currentText())
 
@@ -121,7 +123,7 @@ def _configure_timeline(window) -> None:
     if hasattr(window, "timeline"):
         window.timeline.setToolTip(
             "Click a clip to select it. Drag audio/layers. Ctrl+wheel zooms. "
-            "Drag the thick splitter handle to resize the timeline."
+            "Drag the splitter handle to resize the timeline."
         )
 
 
@@ -242,6 +244,7 @@ def _install_project_preview(window) -> None:
     window._ux_wanted_position = 0.0
     window._ux_loading = False
     window._ux_autoplay = False
+    window._ux_expected_path = ""
 
     def fmt(seconds: float) -> str:
         total = max(0, int(seconds * 1000))
@@ -257,11 +260,13 @@ def _install_project_preview(window) -> None:
     def find_clip(position: float):
         if not window.project or not window.project.video:
             return None
+        duration = project_duration(window.project)
+        target = max(0.0, min(duration, position))
         for i, clip in enumerate(window.project.video):
             end = clip.timeline_end or clip.timeline_start
-            if clip.timeline_start <= position < end or (
-                i == len(window.project.video) - 1 and math.isclose(position, end, abs_tol=0.03)
-            ):
+            if clip.timeline_start <= target < end:
+                return i
+            if i == len(window.project.video) - 1 and math.isclose(target, end, abs_tol=0.03):
                 return i
         return None
 
@@ -269,12 +274,18 @@ def _install_project_preview(window) -> None:
         if not window.project or not 0 <= index < len(window.project.video):
             return
         clip = window.project.video[index]
+        target_path = str(Path(clip.path).resolve())
         window._ux_preview_index = index
         window._ux_wanted_position = project_position
         window._ux_autoplay = autoplay
         window._ux_loading = True
+        window._ux_expected_path = target_path
         window.player.stop()
-        window.player.setSource(QUrl.fromLocalFile(str(Path(clip.path).resolve())))
+        # Clearing first invalidates queued media events from the previous source.
+        window.player.setSource(QUrl())
+        window.player.setSource(QUrl.fromLocalFile(target_path))
+        window.player.setPlaybackRate(clip.speed)
+        window.audio_output.setVolume(max(0.0, min(1.0, 0.8 * clip.volume)))
 
     def seek_project(position: float, autoplay: bool = False):
         if not window.project or not window.project.video:
@@ -295,6 +306,8 @@ def _install_project_preview(window) -> None:
         if index != window._ux_preview_index or current_path != target_path:
             load_clip(index, target, autoplay)
         else:
+            window.player.setPlaybackRate(clip.speed)
+            window.audio_output.setVolume(max(0.0, min(1.0, 0.8 * clip.volume)))
             window.player.setPosition(int(source * 1000))
             if autoplay:
                 window.player.play()
@@ -307,8 +320,17 @@ def _install_project_preview(window) -> None:
         window.seek.blockSignals(False)
         window.time.setText(f"{fmt(target)} / {fmt(duration)}")
 
+    def update_ui(project_position: float):
+        duration = project_duration(window.project)
+        window._ux_project_position = max(0.0, min(duration, project_position))
+        window.timeline.set_position(window._ux_project_position)
+        window.seek.blockSignals(True)
+        window.seek.setValue(int(window._ux_project_position * 1000))
+        window.seek.blockSignals(False)
+        window.time.setText(f"{fmt(window._ux_project_position)} / {fmt(duration)}")
+
     def position_changed(ms: int):
-        if not window.project or not window.project.video:
+        if window._ux_loading or not window.project or not window.project.video:
             return
         index = window._ux_preview_index
         if not 0 <= index < len(window.project.video):
@@ -316,8 +338,6 @@ def _install_project_preview(window) -> None:
         clip = window.project.video[index]
         source = ms / 1000.0
         end = clip.timeline_end or clip.timeline_start
-        project_pos = clip.timeline_start + max(0.0, source - clip.source_start) / clip.speed
-
         if clip.source_end is not None and source >= clip.source_end - 0.06:
             nxt = index + 1
             if nxt < len(window.project.video):
@@ -325,28 +345,29 @@ def _install_project_preview(window) -> None:
                 return
             window.player.pause()
             window._ux_autoplay = False
-            project_pos = end
+            update_ui(end)
+            window.play.setText("▶")
+            return
 
-        window._ux_project_position = min(project_duration(window.project), project_pos)
-        window.timeline.set_position(window._ux_project_position)
-        window.seek.blockSignals(True)
-        window.seek.setValue(int(window._ux_project_position * 1000))
-        window.seek.blockSignals(False)
-        duration = project_duration(window.project)
-        window.time.setText(f"{fmt(window._ux_project_position)} / {fmt(duration)}")
+        project_pos = clip.timeline_start + max(0.0, source - clip.source_start) / clip.speed
+        update_ui(project_pos)
 
     def media_status(status):
         if status == QMediaPlayer.MediaStatus.LoadedMedia and window._ux_loading:
+            if window.player.source().toLocalFile() != window._ux_expected_path:
+                return
             window._ux_loading = False
+            if not window.project or not 0 <= window._ux_preview_index < len(window.project.video):
+                return
             clip = window.project.video[window._ux_preview_index]
             source = clip.source_start + max(
                 0.0, window._ux_wanted_position - clip.timeline_start
             ) * clip.speed
+            window.player.setPlaybackRate(clip.speed)
+            window.audio_output.setVolume(max(0.0, min(1.0, 0.8 * clip.volume)))
             window.player.setPosition(int(source * 1000))
             if window._ux_autoplay:
                 window.player.play()
-            else:
-                window.player.pause()
         elif status == QMediaPlayer.MediaStatus.InvalidMedia:
             window._ux_loading = False
             window.status.setText("Preview could not decode this clip")
