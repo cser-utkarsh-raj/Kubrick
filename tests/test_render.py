@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -46,6 +47,28 @@ def _make_fixture(path: Path) -> None:
     )
 
 
+def _stream_duration(path: Path, selector: str) -> float:
+    proc = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            selector,
+            "-show_entries",
+            "stream=duration",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    streams = json.loads(proc.stdout)["streams"]
+    return float(streams[0]["duration"])
+
+
 def test_render_project_produces_playable_mp4(tmp_path: Path) -> None:
     source = tmp_path / "fixture.mp4"
     output = tmp_path / "rendered.mp4"
@@ -69,6 +92,8 @@ def test_render_project_handles_timeline_cut(tmp_path: Path) -> None:
 
     assert output.is_file()
     assert probe_duration(output) == pytest.approx(1.6, abs=0.08)
+    assert _stream_duration(output, "v:0") == pytest.approx(1.6, abs=0.08)
+    assert _stream_duration(output, "a:0") == pytest.approx(1.6, abs=0.08)
 
 
 def test_render_project_mixes_external_audio_and_filter(tmp_path: Path) -> None:
@@ -83,3 +108,24 @@ def test_render_project_mixes_external_audio_and_filter(tmp_path: Path) -> None:
 
     assert output.is_file()
     assert probe_duration(output) == pytest.approx(2.0, abs=0.08)
+    assert _stream_duration(output, "a:0") == pytest.approx(2.0, abs=0.08)
+
+
+def test_render_project_concatenates_main_audio_with_video_segments(tmp_path: Path) -> None:
+    source = tmp_path / "fixture.mp4"
+    output = tmp_path / "segments.mp4"
+    _make_fixture(source)
+    project = Project(
+        video=[
+            MediaClip(str(source), 0, 0.5, 0),
+            MediaClip(str(source), 1.0, 1.5, 0.5),
+            MediaClip(str(source), 1.8, 2.0, 1.0),
+        ]
+    )
+
+    render_project(project, output, crf=28, preset="ultrafast")
+
+    assert output.is_file()
+    assert probe_duration(output) == pytest.approx(1.2, abs=0.08)
+    assert _stream_duration(output, "v:0") == pytest.approx(1.2, abs=0.08)
+    assert _stream_duration(output, "a:0") == pytest.approx(1.2, abs=0.08)
