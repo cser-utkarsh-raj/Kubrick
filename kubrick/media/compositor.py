@@ -80,7 +80,7 @@ def render_project(
 
     filters: list[str] = []
     video_labels: list[str] = []
-    audio_labels: list[str] = []
+    main_audio_labels: list[str] = []
 
     for index, clip in enumerate(video):
         filters.append(
@@ -105,7 +105,7 @@ def render_project(
             filters.append(
                 f"anullsrc=r=48000:cl=stereo:d={_duration(clip):.6f}[a{index}]"
             )
-        audio_labels.append(f"[a{index}]")
+        main_audio_labels.append(f"[a{index}]")
 
     if len(video_labels) == 1:
         current_video = video_labels[0]
@@ -114,6 +114,14 @@ def render_project(
             f"{''.join(video_labels)}concat=n={len(video_labels)}:v=1:a=0[basev]"
         )
         current_video = "[basev]"
+
+    if len(main_audio_labels) == 1:
+        current_audio = main_audio_labels[0]
+    else:
+        filters.append(
+            f"{''.join(main_audio_labels)}concat=n={len(main_audio_labels)}:v=0:a=1[basea]"
+        )
+        current_audio = "[basea]"
 
     for overlay_index, overlay in sorted(
         enumerate(project.overlays), key=lambda item: item[1].start
@@ -161,7 +169,7 @@ def render_project(
             )
         current_video = f"[{label}]"
 
-    audio_inputs = list(audio_labels)
+    audio_inputs = [current_audio]
     for offset, clip in enumerate(project.audio):
         input_index = len(video) + offset
         source_end = clip.source_end if clip.source_end is not None else probe_duration(clip.path)
@@ -183,11 +191,9 @@ def render_project(
         filters.append(chain)
         audio_inputs.append(f"[exta{offset}]")
 
-    if len(audio_inputs) == 1:
-        current_audio = audio_inputs[0]
-    else:
+    if len(audio_inputs) > 1:
         filters.append(
-            f"{''.join(audio_inputs)}amix=inputs={len(audio_inputs)}:duration=first:"
+            f"{''.join(audio_inputs)}amix=inputs={len(audio_inputs)}:duration=longest:"
             "dropout_transition=0:normalize=0[aout]"
         )
         current_audio = "[aout]"
