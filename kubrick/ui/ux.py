@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtMultimedia import QMediaPlayer
-from PySide6.QtWidgets import QComboBox, QFrame, QProgressBar, QPushButton, QScrollArea, QSplitter
+from PySide6.QtWidgets import QComboBox, QFrame, QProgressBar, QPushButton, QSplitter
 
 from kubrick.core import PRESETS
 from kubrick.editor import project_duration
@@ -62,20 +62,6 @@ def _configure_inspector(window) -> None:
     if layout is not None:
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(6)
-
-    splitter = panel.parentWidget()
-    if isinstance(splitter, QSplitter):
-        index = splitter.indexOf(panel)
-        if index >= 0:
-            scroll = QScrollArea(splitter)
-            scroll.setObjectName("inspectorScroll")
-            scroll.setWidgetResizable(True)
-            scroll.setFrameShape(QFrame.Shape.NoFrame)
-            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            scroll.setWidget(panel)
-            splitter.replaceWidget(index, scroll)
-            scroll.setMinimumWidth(280)
-            window._ux_inspector_scroll = scroll
     window._ux_inspector = panel
 
 
