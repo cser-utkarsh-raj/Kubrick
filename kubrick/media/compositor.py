@@ -271,6 +271,9 @@ def render_project(
                 str(output),
             ]
         )
+    except Exception:
+        output.unlink(missing_ok=True)
+        raise
     finally:
         script.unlink(missing_ok=True)
 
