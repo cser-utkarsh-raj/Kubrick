@@ -1,0 +1,3 @@
+[console_scripts]
+kubrick = kubrick.cli:main
+kubrick-gui = kubrick.ui.app:main
