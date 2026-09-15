@@ -83,11 +83,8 @@ def test_context_preserves_segment_identity_and_detects_fillers() -> None:
 
 def test_invalid_or_out_of_bounds_silence_is_skipped() -> None:
     aggregator = SpeechEvidenceAggregator(10.0)
-    assert aggregator.analyze([TimeRange(0.0, 0.0)]) == []
-    assert aggregator.analyze([TimeRange(9.0, 10.0), TimeRange(10.0, 10.0)]) == [
-        # A valid one-second EOF silence remains valid.
-        aggregator.analyze([TimeRange(9.0, 10.0)])[0]
-    ]
+    assert aggregator.analyze([TimeRange(0.0, 0.0), TimeRange(9.0, 11.0)]) == []
+    assert len(aggregator.analyze([TimeRange(9.0, 10.0)])) == 1
 
 
 def test_invalid_source_duration_is_rejected() -> None:
@@ -164,7 +161,6 @@ def test_core_and_speech_imports_are_acyclic() -> None:
     assert kubrick.speech.SpeechEvidenceAggregator is not None
 
 
-# Keep this import-level assertion explicit: Phase 1 must not change decisions.
 def _decision_signature(decisions: list[EditDecision]) -> list[tuple]:
     return [(d.source.start, d.source.end, d.kind, d.confidence, d.target_duration, d.reason) for d in decisions]
 
