@@ -166,7 +166,7 @@ def _decision_signature(decisions: list[EditDecision]) -> list[tuple]:
 
 
 def test_decision_signature_is_policy_only() -> None:
-    silences = [TimeRange(10.0, 12.0)]
+    silences = [TimeRange(1.5, 3.0)]
     baseline = SilencePolicy(PROFILES["natural"]).decide(silences)
     enriched = SpeechEvidenceAggregator(20.0).analyze(silences, _segments())
 
