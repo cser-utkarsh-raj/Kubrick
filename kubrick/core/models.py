@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from kubrick.speech.evidence import SilenceEvidence
 
 
-class DecisionKind(str):
+class DecisionKind(StrEnum):
     KEEP = "keep"
     COMPRESS = "compress"
     CUT = "cut"
