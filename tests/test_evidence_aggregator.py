@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import pytest
 
 from kubrick.core import PROFILES, SilencePolicy
 from kubrick.core.models import EditDecision, TimeRange
 from kubrick.editor import analyzer
-from kubrick.speech import SpeechEvidenceAggregator, SpeechSegment, Word
+from kubrick.speech import SpeechDependencyError, SpeechEvidenceAggregator, SpeechSegment, Word
 
 
 def _segments() -> list[SpeechSegment]:
@@ -81,10 +84,10 @@ def test_context_preserves_segment_identity_and_detects_fillers() -> None:
     assert item.context.filler_detected is True
 
 
-def test_invalid_or_out_of_bounds_silence_is_skipped() -> None:
-    aggregator = SpeechEvidenceAggregator(10.0)
-    assert aggregator.analyze([TimeRange(0.0, 0.0), TimeRange(9.0, 11.0)]) == []
-    assert len(aggregator.analyze([TimeRange(9.0, 10.0)])) == 1
+def test_out_of_bounds_silence_is_skipped() -> None:
+    aggregator = SpeechEvidenceAggregator(8.0)
+    assert aggregator.analyze([TimeRange(0.0, 0.0), TimeRange(7.0, 9.0)]) == []
+    assert len(aggregator.analyze([TimeRange(7.0, 8.0)])) == 1
 
 
 def test_invalid_source_duration_is_rejected() -> None:
@@ -134,9 +137,7 @@ def test_analyzer_falls_back_when_optional_whisper_is_missing(monkeypatch) -> No
     monkeypatch.setattr(
         analyzer,
         "transcribe",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            RuntimeError("Speech features require faster-whisper. Install with: python -m pip install -e '.[speech]'")
-        ),
+        lambda *args, **kwargs: (_ for _ in ()).throw(SpeechDependencyError("missing")),
     )
 
     report = analyzer.analyze("fake.mp4", analyzer.AnalyzerConfig(speech=True))
@@ -144,6 +145,22 @@ def test_analyzer_falls_back_when_optional_whisper_is_missing(monkeypatch) -> No
     assert report.decisions == expected
     assert report.evidence[0].quality.fallback_mode is True
     assert report.metadata["speech_evidence"]["available"] is False
+    assert report.metadata["speech_evidence"]["mode"] == "silence-only-fallback"
+
+
+def test_analyzer_does_not_load_whisper_in_default_mode(monkeypatch) -> None:
+    silences = [TimeRange(2.0, 4.0)]
+    monkeypatch.setattr(analyzer, "probe_duration", lambda path: 10.0)
+    monkeypatch.setattr(analyzer, "detect_silence", lambda *args, **kwargs: list(silences))
+    monkeypatch.setattr(
+        analyzer,
+        "transcribe",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Whisper must not run")),
+    )
+
+    report = analyzer.analyze("fake.mp4")
+    assert report.evidence[0].quality.fallback_mode is True
+    assert report.metadata["speech_evidence"]["mode"] == "silence-only"
 
 
 def test_analysis_report_evidence_defaults_to_empty() -> None:
@@ -154,11 +171,15 @@ def test_analysis_report_evidence_defaults_to_empty() -> None:
 
 
 def test_core_and_speech_imports_are_acyclic() -> None:
-    import kubrick.core
-    import kubrick.speech
-
-    assert kubrick.core.AnalysisReport is not None
-    assert kubrick.speech.SpeechEvidenceAggregator is not None
+    for module in ("kubrick.core", "kubrick.speech"):
+        result = subprocess.run(
+            [sys.executable, "-c", f"import {module}; print('ok')"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "ok"
 
 
 def _decision_signature(decisions: list[EditDecision]) -> list[tuple]:
