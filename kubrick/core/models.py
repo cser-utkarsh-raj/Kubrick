@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from kubrick.speech.evidence import SilenceEvidence
 
 
-class DecisionKind(StrEnum):
+class DecisionKind(str):
     KEEP = "keep"
     COMPRESS = "compress"
     CUT = "cut"
@@ -58,8 +57,8 @@ class AnalysisReport:
     duration: float
     silences: list[TimeRange]
     decisions: list[EditDecision]
-    evidence: list[SilenceEvidence] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    evidence: list[SilenceEvidence] = field(default_factory=list)
 
     @property
     def removed_duration(self) -> float:
