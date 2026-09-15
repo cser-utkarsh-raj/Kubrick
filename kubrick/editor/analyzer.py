@@ -7,7 +7,7 @@ from kubrick.core import AnalysisReport, PROFILES, SilencePolicy
 from kubrick.core.models import DecisionKind, EditDecision, TimeRange
 from kubrick.media import analyze_visuals, probe_duration
 from kubrick.media.silencedetect import detect_silence
-from kubrick.speech import SpeechEvidenceAggregator, transcribe
+from kubrick.speech import SilenceEvidence, SpeechDependencyError, SpeechEvidenceAggregator, transcribe
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,21 +63,25 @@ def _speech_evidence(
     silences: list[TimeRange],
     duration: float,
     config: AnalyzerConfig,
-) -> tuple[list, dict[str, object]]:
+) -> tuple[list[SilenceEvidence], dict[str, object]]:
     """Collect optional Whisper context without changing editorial decisions."""
     aggregator = SpeechEvidenceAggregator(duration)
     if not config.speech:
-        return aggregator.analyze(silences), {"enabled": False, "fallback_mode": True}
+        return aggregator.analyze(silences), {
+            "enabled": False,
+            "available": False,
+            "fallback_mode": False,
+            "mode": "silence-only",
+        }
 
     try:
         segments = transcribe(path, model_size=config.whisper_model, language=config.language)
-    except RuntimeError as exc:
-        if "require faster-whisper" not in str(exc):
-            raise
+    except SpeechDependencyError as exc:
         return aggregator.analyze(silences), {
             "enabled": True,
             "available": False,
             "fallback_mode": True,
+            "mode": "silence-only-fallback",
             "reason": str(exc),
         }
 
@@ -85,6 +89,7 @@ def _speech_evidence(
         "enabled": True,
         "available": True,
         "fallback_mode": False,
+        "mode": "whisper",
         "segments": len(segments),
     }
 

@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+class SpeechDependencyError(RuntimeError):
+    """Raised when an optional speech dependency is not installed."""
+
+
 @dataclass(frozen=True, slots=True)
 class Word:
     text: str
@@ -26,11 +30,14 @@ def transcribe(path: str | Path, *, model_size: str = "small", language: str | N
     faster-whisper exposes word-level timestamps and Silero VAD; Kubrick uses
     these as evidence for future semantic editing rather than blindly deleting
     every VAD gap.
+
+    The dependency is intentionally optional. Callers can catch
+    ``SpeechDependencyError`` and continue with deterministic media evidence.
     """
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:
-        raise RuntimeError(
+        raise SpeechDependencyError(
             "Speech features require faster-whisper. Install with: "
             "python -m pip install -e '.[speech]'"
         ) from exc
