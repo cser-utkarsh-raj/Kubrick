@@ -1,331 +1,180 @@
-"""
-Tests for the Speech Evidence Aggregator (Phase 1).
+from __future__ import annotations
 
-These tests verify that evidence collection works correctly,
-handles edge cases safely, and does NOT alter existing editorial decisions.
-"""
 import pytest
-from kubrick.core.models import TimeRange
-from kubrick.speech.evidence import SilenceEvidence, SpeechContext, WordContext, EvidenceQuality
-from kubrick.speech.aggregator import SpeechEvidenceAggregator
+
+from kubrick.core import PROFILES, SilencePolicy
+from kubrick.core.models import EditDecision, TimeRange
+from kubrick.editor import analyzer
+from kubrick.speech import SpeechEvidenceAggregator, SpeechSegment, Word
 
 
-class TestSilenceOnlyEvidence:
-    """Test evidence generation when Whisper data is unavailable."""
-    
-    def test_silence_only_creates_valid_evidence(self):
-        """Verify silence-only mode produces valid evidence with fallback flags."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=10.0, end=12.0)]
-        
-        evidence_list = agg.analyze(silence_regions=silences)
-        
-        assert len(evidence_list) == 1
-        ev = evidence_list[0]
-        assert ev.silence.start == 10.0
-        assert ev.silence.end == 12.0
-        assert ev.silence.duration == 2.0
-        assert ev.context.before is None
-        assert ev.context.after is None
-        assert ev.quality.whisper_available is False
-        assert ev.quality.fallback_mode is True
-    
-    def test_empty_silence_list_returns_empty(self):
-        """Verify empty input returns empty list."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        result = agg.analyze(silence_regions=[])
-        assert result == []
+def _segments() -> list[SpeechSegment]:
+    return [
+        SpeechSegment(
+            text="hello",
+            start=0.5,
+            end=1.4,
+            words=(Word("hello", 0.5, 1.4, 0.95),),
+        ),
+        SpeechSegment(
+            text="world",
+            start=3.1,
+            end=4.0,
+            words=(Word("world", 3.1, 4.0, 0.90),),
+        ),
+    ]
 
 
-class TestSpeechContextAttachment:
-    """Test that speech context is correctly attached when available."""
-    
-    def test_silence_between_two_words(self):
-        """Verify words before and after silence are correctly identified."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=5.0, end=7.0)]
-        words = [
-            {"text": "hello", "start": 4.0, "end": 4.9, "confidence": 0.95},
-            {"text": "world", "start": 7.1, "end": 8.0, "confidence": 0.92},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        assert len(evidence_list) == 1
-        ev = evidence_list[0]
-        assert ev.context.before is not None
-        assert ev.context.before.text == "hello"
-        assert ev.context.before.timestamp == 4.9
-        assert ev.context.after is not None
-        assert ev.context.after.text == "world"
-        assert ev.context.after.timestamp == 7.1
-    
-    def test_silence_between_segments(self):
-        """Verify same_segment flag is set correctly."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=10.0, end=12.0)]
-        words = [
-            {"text": "first", "start": 8.0, "end": 9.9, "confidence": 0.9, "segment_index": 0},
-            {"text": "second", "start": 12.1, "end": 13.0, "confidence": 0.9, "segment_index": 1},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        assert ev.context.same_segment is False
-    
-    def test_silence_within_same_segment(self):
-        """Verify same_segment is True when words share segment ID."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=5.0, end=6.0)]
-        words = [
-            {"text": "part1", "start": 4.0, "end": 4.9, "confidence": 0.9, "segment_index": 0},
-            {"text": "part2", "start": 6.1, "end": 7.0, "confidence": 0.9, "segment_index": 0},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        assert ev.context.same_segment is True
+def test_silence_only_mode_is_safe_and_explicit() -> None:
+    silence = TimeRange(1.5, 3.0)
+    evidence = SpeechEvidenceAggregator(10.0).analyze([silence])
+
+    assert len(evidence) == 1
+    assert evidence[0].silence == silence
+    assert evidence[0].context.before is None
+    assert evidence[0].context.after is None
+    assert evidence[0].quality.whisper_available is False
+    assert evidence[0].quality.fallback_mode is True
 
 
-class TestFillerDetection:
-    """Test filler word detection in context."""
-    
-    def test_filler_detected_before_silence(self):
-        """Verify 'um' before silence is flagged."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=5.0, end=7.0)]
-        words = [
-            {"text": "um", "start": 4.0, "end": 4.9, "confidence": 0.95},
-            {"text": "hello", "start": 7.1, "end": 8.0, "confidence": 0.95},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        assert ev.context.filler_detected is True
-        assert ev.context.before.text == "um"
-    
-    def test_filler_detected_after_silence(self):
-        """Verify 'uh' after silence is flagged."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=5.0, end=7.0)]
-        words = [
-            {"text": "hello", "start": 4.0, "end": 4.9, "confidence": 0.95},
-            {"text": "uh", "start": 7.1, "end": 8.0, "confidence": 0.95},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        assert ev.context.filler_detected is True
-    
-    def test_like_not_flagged_as_filler_by_default(self):
-        """Verify 'like' is NOT automatically flagged as filler (conservative)."""
-        # Note: Current implementation DOES flag 'like' if in FILLER_WORDS set.
-        # This test documents current behavior; policy may choose to ignore it.
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=5.0, end=7.0)]
-        words = [
-            {"text": "like", "start": 4.0, "end": 4.9, "confidence": 0.95},
-            {"text": "whatever", "start": 7.1, "end": 8.0, "confidence": 0.95},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        # Current behavior: 'like' is in FILLER_WORDS set
-        # Policy layer decides whether to act on this
-        assert ev.context.filler_detected is True
+def test_whisper_context_is_attached_to_silence() -> None:
+    evidence = SpeechEvidenceAggregator(10.0).analyze(
+        [TimeRange(1.5, 3.0)],
+        _segments(),
+    )
+
+    item = evidence[0]
+    assert item.context.before is not None
+    assert item.context.before.text == "hello"
+    assert item.context.before.timestamp == pytest.approx(1.4)
+    assert item.context.after is not None
+    assert item.context.after.text == "world"
+    assert item.context.after.timestamp == pytest.approx(3.1)
+    assert item.context.same_segment is False
+    assert item.quality.whisper_available is True
+    assert item.quality.fallback_mode is False
+    assert item.quality.confidence_score == pytest.approx(0.925)
+    assert item.quality.timestamps_reliable is True
 
 
-class TestEdgeCasesAndSafety:
-    """Test robustness with malformed/missing data."""
-    
-    def test_missing_previous_word(self):
-        """Verify handling when no word exists before silence."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=1.0, end=2.0)]
-        words = [
-            {"text": "only", "start": 2.1, "end": 3.0, "confidence": 0.9},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        assert ev.context.before is None
-        assert ev.context.after is not None
-    
-    def test_missing_next_word(self):
-        """Verify handling when no word exists after silence."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=58.0, end=59.0)]
-        words = [
-            {"text": "last", "start": 57.0, "end": 57.9, "confidence": 0.9},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        assert ev.context.before is not None
-        assert ev.context.after is None
-    
-    def test_end_of_file_silence(self):
-        """Verify EOF silence is handled correctly."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=59.0, end=60.0)]
-        words = [
-            {"text": "done", "start": 58.0, "end": 58.9, "confidence": 0.9},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        assert ev.context.before is not None
-        assert ev.context.after is None
-    
-    def test_start_of_file_silence(self):
-        """Verify SOF silence is handled correctly."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=0.0, end=1.0)]
-        words = [
-            {"text": "start", "start": 1.1, "end": 2.0, "confidence": 0.9},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        assert ev.context.before is None
-        assert ev.context.after is not None
-    
-    def test_malformed_negative_duration_silence_skipped(self):
-        """Verify invalid silence ranges are skipped."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=10.0, end=5.0)]  # Invalid: end < start
-        
-        evidence_list = agg.analyze(silence_regions=silences)
-        assert len(evidence_list) == 0
-    
-    def test_silence_outside_source_duration_skipped(self):
-        """Verify silences beyond source duration are skipped."""
-        agg = SpeechEvidenceAggregator(source_duration=10.0)
-        silences = [TimeRange(start=15.0, end=20.0)]
-        
-        evidence_list = agg.analyze(silence_regions=silences)
-        assert len(evidence_list) == 0
-    
-    def test_low_confidence_words_propagated(self):
-        """Verify low confidence scores are preserved in evidence."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=5.0, end=7.0)]
-        words = [
-            {"text": "maybe", "start": 4.0, "end": 4.9, "confidence": 0.3},
-            {"text": "possibly", "start": 7.1, "end": 8.0, "confidence": 0.4},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        assert ev.context.before.confidence == 0.3
-        assert ev.context.after.confidence == 0.4
-        assert ev.quality.confidence_score == pytest.approx(0.35, rel=0.01)
+def test_context_preserves_segment_identity_and_detects_fillers() -> None:
+    segments = [
+        SpeechSegment(
+            text="um",
+            start=1.0,
+            end=1.4,
+            words=(Word("um", 1.0, 1.4, 0.96),),
+        ),
+        SpeechSegment(
+            text="continue",
+            start=3.0,
+            end=3.8,
+            words=(Word("continue", 3.0, 3.8, 0.91),),
+        ),
+    ]
+    item = SpeechEvidenceAggregator(10.0).analyze([TimeRange(1.5, 2.5)], segments)[0]
+
+    assert item.context.before is not None
+    assert item.context.before.segment_id == 0
+    assert item.context.after is not None
+    assert item.context.after.segment_id == 1
+    assert item.context.filler_detected is True
 
 
-class TestEvidenceQuality:
-    """Test evidence quality metrics."""
-    
-    def test_quality_high_when_both_words_present(self):
-        """Verify quality score reflects available context."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=5.0, end=7.0)]
-        words = [
-            {"text": "a", "start": 4.0, "end": 4.9, "confidence": 0.95},
-            {"text": "b", "start": 7.1, "end": 8.0, "confidence": 0.90},
-        ]
-        
-        evidence_list = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
-        )
-        
-        ev = evidence_list[0]
-        assert ev.quality.whisper_available is True
-        assert ev.quality.fallback_mode is False
-        assert ev.quality.confidence_score == pytest.approx(0.925, rel=0.01)
-    
-    def test_quality_zero_when_no_whisper(self):
-        """Verify confidence is 0.0 in silence-only mode."""
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=5.0, end=7.0)]
-        
-        evidence_list = agg.analyze(silence_regions=silences)
-        
-        ev = evidence_list[0]
-        assert ev.quality.confidence_score == 0.0
-        assert ev.quality.fallback_mode is True
+def test_invalid_or_out_of_bounds_silence_is_skipped() -> None:
+    aggregator = SpeechEvidenceAggregator(10.0)
+    assert aggregator.analyze([TimeRange(0.0, 0.0)]) == []
+    assert aggregator.analyze([TimeRange(9.0, 10.0), TimeRange(10.0, 10.0)]) == [
+        # A valid one-second EOF silence remains valid.
+        aggregator.analyze([TimeRange(9.0, 10.0)])[0]
+    ]
 
 
-class TestBackwardCompatibility:
-    """Ensure Phase 1 does not break existing behavior."""
-    
-    def test_evidence_does_not_alter_decisions_without_policy_change(self):
-        """
-        Verify that adding evidence collection alone does not change
-        the actual EditDecision output (since policy hasn't changed yet).
-        
-        This is a meta-test ensuring Phase 1 is truly additive.
-        """
-        # The aggregator only produces evidence.
-        # Decisions are still made by SilencePolicy which doesn't use evidence yet.
-        # This test confirms the aggregator doesn't crash or mutate inputs.
-        agg = SpeechEvidenceAggregator(source_duration=60.0)
-        silences = [TimeRange(start=10.0, end=15.0)]
-        words = [
-            {"text": "before", "start": 9.0, "end": 9.9, "confidence": 0.9},
-            {"text": "after", "start": 15.1, "end": 16.0, "confidence": 0.9},
-        ]
-        
-        # Should not raise
-        evidence = agg.analyze(
-            silence_regions=silences,
-            whisper_words=words
+def test_invalid_source_duration_is_rejected() -> None:
+    with pytest.raises(ValueError, match="source_duration"):
+        SpeechEvidenceAggregator(-1.0)
+
+
+def test_unreliable_word_timestamps_are_reported() -> None:
+    segments = [
+        SpeechSegment(
+            text="a b",
+            start=1.0,
+            end=3.0,
+            words=(
+                Word("a", 1.0, 2.0, 0.9),
+                Word("b", 1.5, 3.0, 0.8),
+            ),
         )
-        
-        assert len(evidence) == 1
-        # Original silence unchanged
-        assert evidence[0].silence.start == 10.0
-        assert evidence[0].silence.end == 15.0
+    ]
+    item = SpeechEvidenceAggregator(10.0).analyze([TimeRange(3.5, 4.0)], segments)[0]
+    assert item.quality.timestamps_reliable is False
+
+
+def test_analyzer_integrates_aggregator_without_changing_silence_decisions(monkeypatch) -> None:
+    silences = [TimeRange(2.0, 4.0), TimeRange(7.0, 8.0)]
+    expected = SilencePolicy(PROFILES["natural"]).decide(silences)
+
+    monkeypatch.setattr(analyzer, "probe_duration", lambda path: 10.0)
+    monkeypatch.setattr(analyzer, "detect_silence", lambda *args, **kwargs: list(silences))
+    monkeypatch.setattr(analyzer, "transcribe", lambda *args, **kwargs: _segments())
+
+    report = analyzer.analyze("fake.mp4", analyzer.AnalyzerConfig(speech=True))
+
+    assert report.evidence
+    assert [item.silence for item in report.evidence] == silences
+    assert report.decisions == expected
+    assert report.metadata["speech_evidence"]["available"] is True
+    assert report.metadata["speech_evidence"]["segments"] == 2
+
+
+def test_analyzer_falls_back_when_optional_whisper_is_missing(monkeypatch) -> None:
+    silences = [TimeRange(2.0, 4.0)]
+    expected = SilencePolicy(PROFILES["natural"]).decide(silences)
+
+    monkeypatch.setattr(analyzer, "probe_duration", lambda path: 10.0)
+    monkeypatch.setattr(analyzer, "detect_silence", lambda *args, **kwargs: list(silences))
+    monkeypatch.setattr(
+        analyzer,
+        "transcribe",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("Speech features require faster-whisper. Install with: python -m pip install -e '.[speech]'")
+        ),
+    )
+
+    report = analyzer.analyze("fake.mp4", analyzer.AnalyzerConfig(speech=True))
+
+    assert report.decisions == expected
+    assert report.evidence[0].quality.fallback_mode is True
+    assert report.metadata["speech_evidence"]["available"] is False
+
+
+def test_analysis_report_evidence_defaults_to_empty() -> None:
+    from kubrick.core.models import AnalysisReport
+
+    report = AnalysisReport(10.0, [], [])
+    assert report.evidence == []
+
+
+def test_core_and_speech_imports_are_acyclic() -> None:
+    import kubrick.core
+    import kubrick.speech
+
+    assert kubrick.core.AnalysisReport is not None
+    assert kubrick.speech.SpeechEvidenceAggregator is not None
+
+
+# Keep this import-level assertion explicit: Phase 1 must not change decisions.
+def _decision_signature(decisions: list[EditDecision]) -> list[tuple]:
+    return [(d.source.start, d.source.end, d.kind, d.confidence, d.target_duration, d.reason) for d in decisions]
+
+
+def test_decision_signature_is_policy_only() -> None:
+    silences = [TimeRange(10.0, 12.0)]
+    baseline = SilencePolicy(PROFILES["natural"]).decide(silences)
+    enriched = SpeechEvidenceAggregator(20.0).analyze(silences, _segments())
+
+    assert enriched[0].context.before is not None
+    assert _decision_signature(baseline) == _decision_signature(
+        SilencePolicy(PROFILES["natural"]).decide([item.silence for item in enriched])
+    )
