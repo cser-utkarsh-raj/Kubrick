@@ -1,3 +1,39 @@
-Since the only modified file is `.gitignore` itself and there are no other file changes provided, there's no new information to determine what should be added to the .gitignore file. Without knowing what other files have been added, deleted, or modified in the repository, I cannot determine appropriate ignore patterns to add.
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 
-Therefore, I'll preserve the current state and output nothing additional.
+# Test / lint / coverage
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local editor / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local media and project outputs
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.wav
+*.m4a
+*.aac
+*.kubrick.json

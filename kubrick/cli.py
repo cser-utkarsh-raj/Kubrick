@@ -21,6 +21,9 @@ def _build_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument("--profile", choices=("gentle", "natural", "tight"), default="natural")
     analyze_parser.add_argument("--noise-db", type=float, default=-38.0)
     analyze_parser.add_argument("--visual", action="store_true", help="also run visual review analysis")
+    analyze_parser.add_argument("--speech", action="store_true", help="also collect optional Whisper speech evidence")
+    analyze_parser.add_argument("--whisper-model", default="small")
+    analyze_parser.add_argument("--language", default=None)
     analyze_parser.add_argument("--json", dest="json_path", type=Path)
 
     render_parser = sub.add_parser("render", help="Automatically tighten footage and render an MP4")
@@ -61,6 +64,32 @@ def _report_json(report) -> dict:
             }
             for d in report.decisions
         ],
+        "evidence": [
+            {
+                "silence": {"start": item.silence.start, "end": item.silence.end},
+                "before": None if item.context.before is None else {
+                    "text": item.context.before.text,
+                    "timestamp": item.context.before.timestamp,
+                    "confidence": item.context.before.confidence,
+                    "segment_id": item.context.before.segment_id,
+                },
+                "after": None if item.context.after is None else {
+                    "text": item.context.after.text,
+                    "timestamp": item.context.after.timestamp,
+                    "confidence": item.context.after.confidence,
+                    "segment_id": item.context.after.segment_id,
+                },
+                "same_segment": item.context.same_segment,
+                "filler_detected": item.context.filler_detected,
+                "quality": {
+                    "whisper_available": item.quality.whisper_available,
+                    "timestamps_reliable": item.quality.timestamps_reliable,
+                    "confidence_score": item.quality.confidence_score,
+                    "fallback_mode": item.quality.fallback_mode,
+                },
+            }
+            for item in report.evidence
+        ],
         "removed_duration": report.removed_duration,
         "output_duration": report.output_duration,
         "metadata": report.metadata,
@@ -71,7 +100,14 @@ def main() -> int:
     args = _build_parser().parse_args()
 
     if args.command == "analyze":
-        config = AnalyzerConfig(args.profile, args.noise_db, visual=args.visual)
+        config = AnalyzerConfig(
+            args.profile,
+            args.noise_db,
+            visual=args.visual,
+            speech=args.speech,
+            whisper_model=args.whisper_model,
+            language=args.language,
+        )
         report = analyze(args.input, config)
         text = json.dumps(_report_json(report), indent=2)
         if args.json_path:
